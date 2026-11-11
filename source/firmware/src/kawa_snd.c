@@ -376,6 +376,7 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
     if (note == NOTE_OFF) {
         v->gate = 0;
         if (v->stage && v->stage < 4u) v->stage = 4;
+        if (is_sk(e)) sk_note_off(t);           /* (Fm1Studio) */
         if (e == E_FM && t == fm_trk) {
             fm6_note_t *n = &fmn[fm_cur];
             if (n->live && n->down) fm6_note_key(n, fm_patch, 0);
@@ -410,7 +411,7 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
     v->arp_n = 0;
     v->shape = (uint8_t)p[P_SHAPE];
     v->crush = (uint8_t)p[P_CRUSH];
-    v->vib = (uint8_t)(e == E_FM ? 0 : p[P_VIB]);
+    v->vib = (uint8_t)(e == E_FM || is_sk(e) ? 0 : p[P_VIB]);   /* ((Fm1Studio) a Skiff engine: P_S2 is its own knob) */
     if (nm == NM_NOTE) {
         int32_t gv;
         int fg = trick(k, FX_GLIDE, &gv);
@@ -449,6 +450,8 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
             fm6_note_init(n, fp, (int32_t)note + fp[FP_TRNSP] - 24, (int32_t)(vol * 8u + 7u), 1);
             fm6_lfo_key(&fm_lfo);
         }
+        if (is_sk(e) && !(v->glide && v->stage))   /* (Fm1Studio) Skiff's engine: its voice starts again (kawa_sk.c) */
+            sk_note_on(t, note, vol);
     } else if (e == E_KIT)
         drum_on(t, cell_idx(note) & 15u, (trick(k, FX_PITCH, &sv) ? sv : 0) + v->tb_tr + (cell_idx(note) >= 16u ? 12 : 0), trick(k, FX_CRUSH, &sv) ? sv : -1);   /* (17..32: the same drum, tuned up) */
     else {
@@ -473,6 +476,8 @@ static void voice_off(uint32_t t)
     v->gate = 0;
     if (v->stage && v->stage < 4u)
         v->stage = 4;
+    if (is_sk(prj.snd[t].engine))               /* (Fm1Studio) */
+        sk_note_off(t);
     if (prj.snd[t].engine == E_FM && t == fm_trk) {
         fm6_note_t *n = &fmn[fm_cur];
         if (n->live && n->down) fm6_note_key(n, fm_patch, 0);
@@ -777,6 +782,9 @@ static void track_chunk(uint32_t t, int32_t *out)
             if (!fmn[0].live && !fmn[1].live && !v->stage)
                 active = 0;
         }
+    } else if (is_sk(e)) {                      /* (Fm1Studio) Skiff's engine (kawa_sk.c) */
+        if (active)
+            sk_chunk(t, raw, pit, v->env);
     } else if (e == E_KIT) {
         if (cpu_shed >= 3u) drum[t][drum_next[t]].on = 0;   /* (the governor: the older voice goes) */
         drum_chunk(&drum[t][0], raw);

@@ -1,10 +1,47 @@
-# KAWA — Pocket Tracker for the M-VAVE FM-1
+# Gabare — KAWA's tracker, Skiff's and JIANT's engines
 
-![KAWA, Pocket Tracker for the M-VAVE FM-1](manual/img/kawa-preview.png)
+![Gabare: the boot screen](docs/img/gabare/boot.png)
 
-**[▶ Open the KAWA website](https://guizmoh.github.io/Kawa-Tracker-Fm1/)** — [Install](https://guizmoh.github.io/Kawa-Tracker-Fm1/#install) · [Emulator](https://guizmoh.github.io/Kawa-Tracker-Fm1/emulator/index.html) · [Manual](https://guizmoh.github.io/Kawa-Tracker-Fm1/manual/index.html) · [Cheat sheet](https://guizmoh.github.io/Kawa-Tracker-Fm1/docs/cheatsheet.html) · [Samples](https://guizmoh.github.io/Kawa-Tracker-Fm1/samples.html)
+**[Install Gabare](index.html)** · [Send a DX7 bank](dx7.html) · [Send samples](samples.html) · [KAWA's manual](manual/index.html)
 
-**English** · [Français](README.fr.md) · [Español](README.es.md)
+[Français](README.fr.md) (the full description of what Gabare adds) · **English** · [Español](README.es.md)
+
+Gabare is a free firmware for the **M-VAVE FM-1**: it is [KAWA](https://github.com/Guizmoh/Kawa-Tracker-Fm1) by
+Omnipotard (the tracker, its six tracks, its effects, its tools, its installer) with nine more synth engines from two
+firmwares of the Felucca family, an arpeggiator on the keys, and DX7 banks on the FM track. Everything KAWA's manual
+says holds for Gabare. This first part says what Gabare adds; the rest is KAWA's text.
+
+> **Status: 0.5, beta.** 0.1 to 0.4 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
+> measured). STRING, ADD, the arpeggiator and DX7 banks (0.3) pass KAWA's tests and the simulator, not yet all of them
+> on the FM-1. 0.4 reads the DX7 bank back over USB (SysEx command 19, see `kawa_sysex.c`); 0.5 adds the FM-1's 128
+> original voices to the FM track.
+
+## What Gabare adds
+
+- **Fifteen engines.** KAWA's six (PULSE, WAVE, NOISE, FM, KIT, SAMPLE), seven of
+  [Skiff](https://github.com/illuminus5/skiff)'s (ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS) and two of
+  [JIANT](https://github.com/juanjiant-bit/JIANT)'s (STRING, ADD), with their factory sounds. SOUND page: ARP held +
+  PRESETS changes the engine; their 8 knobs are SOUND 1 and 2. FM plays on one track, **PHYS on four at most** (three
+  PHYS tracks take 68 % of the FM-1's audio time).
+- **An arpeggiator.** SCL goes SCALE → ARPEGGIO → MAGIC. K1 the mode (UP, DOWN, UP+DOWN, RANDOM, AS PLAYED), K2 the
+  rate (1/32 .. 1/4 with triplets), K3 the octaves (1..4), K4 the gate; ARP latches the notes. It follows the
+  sequencer's rows while playing, and REC writes it into the pattern (one note a row, a DELAY between rows).
+- **The FM-1's original voices and DX7 banks.** The FM engine is msfa (Dexed's core). On the FM track, SOUND page, K1
+  goes through KAWA's 12 FM sounds, then the FM-1's 128 original voices (M-VAVE firmware V15, published by M-VAVE
+  under Apache-2.0 in [fm1_open](https://github.com/m-vave/fm1_open); close to the stock firmware's sound, not
+  identical), then the 32 voices of a DX7 bank (`.syx`, 4104 bytes) you send from [dx7.html](dx7.html). One bank at a
+  time, kept in flash. Gabare carries no Yamaha sounds: you bring your banks.
+- Boot screen GABARE, package identity `FM-1_947`; KAWA's projects, samples and settings load as they are.
+
+Credits: Skiff's engines by illuminus5 (copied unchanged in `source/firmware/src/skiff/`), STRING and ADD by Juan
+Ignacio Antonucci (JIANT, adapted to one voice a track), all from Felucca (Leo Kuroshita, Hügelton Instruments),
+GPL-3.0; PHYS has models ported from DaisySP and Rings (MIT). See [LICENSING.md](LICENSING.md).
+
+---
+
+## KAWA
+
+*What follows is KAWA's text; it holds for Gabare.*
 
 KAWA is a free tracker firmware for the **M-VAVE FM-1**, made above all for **chiptune and IDM**: 4-bit waves,
 pulse and noise like the old consoles, FM, breakbeats cut into slices, rolls and ratchets, stutter and glitch

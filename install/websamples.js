@@ -33,8 +33,10 @@ const MAGIC = 0x504D534B;                             // "KSMP" (usr_hdr_t.magic
 const RATE = 22050, RATES = [22050, 11025];
 const NSLOTS = 4, NAME_MAX = 11, PACKET = 256, MIN_LEN = 64, HEADER_LEN = 36;
 const SILENCE = 0.003, PEAK = 0.95, FADE = 64;        // kawa_samples.py prepare()
-const CMD = { INFO: 1, BEGIN: 2, WRITE: 3, END: 4, ERASE: 5, LIST: 6 };
+const CMD = { INFO: 1, BEGIN: 2, WRITE: 3, END: 4, ERASE: 5, LIST: 6, DXBEGIN: 16, DXWRITE: 17, DXEND: 18 };
 const CMD_NAME = ["", "INFO", "BEGIN", "WRITE", "END", "ERASE", "LIST"];
+CMD_NAME[16] = "DXBEGIN"; CMD_NAME[17] = "DXWRITE"; CMD_NAME[18] = "DXEND";   // (Gabare) a DX7 bank (kawa_sysex.c)
+const DX_SIZE = 4096, DX_VOICES = 32;
 const RC = { 0: "ok", 1: "bad arguments", 2: "busy: stop KAWA first", 3: "flash error", 4: "CRC mismatch",
              5: "out of order / no session" };
 // milliseconds: the Python tool's seconds x 1000 (ask(): INFO and LIST 2 s, BEGIN and END 3 s, WRITE 1.5 s,
@@ -108,6 +110,11 @@ function messageOf(code, d) {
         return "Refused before sending: " + (d.why || "invalid sample") + ".";
     case "cancelled":
         return "Cancelled. The FM-1 plays again by itself within 10 seconds.";
+    case "dx7":
+        return "Ce fichier n'est pas une banque DX7 de 32 voix (un .syx de 4104 octets : F0 43 .. 09 20 00, 4096 octets, la somme, F7)" +
+               (d.why ? " : " + d.why : "") + ".";
+    case "nogabare":
+        return "Ce FM-1 fait tourner KAWA, pas Gabare : les banques DX7 ne vont qu'à Gabare 0.3 ou plus récent.";
     default:
         return String(code);
     }
@@ -157,7 +164,7 @@ function unpack7(b) {
 }
 function frame(cmd, payload) {
     const c = typeof cmd === "string" ? CMD[cmd] : cmd;
-    if (!(c >= 1 && c <= 6)) throw new KawaError("badargs", { why: "unknown command " + cmd });
+    if (!((c >= 1 && c <= 6) || (c >= 16 && c <= 18))) throw new KawaError("badargs", { why: "unknown command " + cmd });
     const p = pack7(payload || []);
     const f = new Uint8Array(6 + p.length);
     f[0] = 0xF0; f[1] = 0x7D; f[2] = 0x4B; f[3] = 0x57; f[4] = c;
@@ -546,7 +553,32 @@ function parseInfo(b) {                               // rc, "KAWA", version (4 
         version: b.length >= 9 ? ascii(b.subarray(5, 9)).trim() : "",
         slots: b.length >= 10 ? b[9] : NSLOTS,
         cap: b.length >= 13 ? (b[10] | b[11] << 8 | b[12] << 16) : CAP,
+        gabare: b.length >= 19 && ascii(b.subarray(13, 19)) === "GABARE",   // (Gabare) its name, its engines, a DX7 bank
+        engines: b.length >= 20 ? b[19] : 0,
+        dx7: b.length >= 21 ? b[20] === 1 : false,
     };
+}
+/* (Gabare) a DX7 bank from a file: a 32-voice bulk dump (F0 43 0n 09 20 00, 4096 bytes, the checksum, F7; anywhere in
+ * the file, the first one), or the 4096 bytes alone. -> {data, names[32]} (throws KawaError "dx7") */
+function parseDx7(u8) {
+    const b = u8 instanceof Uint8Array ? u8 : new Uint8Array(u8);
+    let data = null;
+    for (let i = 0; i + 4104 <= b.length; i++) {
+        if (b[i] === 0xF0 && b[i + 1] === 0x43 && (b[i + 2] & 0xF0) === 0 && b[i + 3] === 0x09 && b[i + 4] === 0x20 && b[i + 5] === 0x00) {
+            data = b.subarray(i + 6, i + 6 + DX_SIZE);
+            let sum = 0;
+            for (const x of data) sum += x;
+            if (((sum + b[i + 6 + DX_SIZE]) & 0x7F) !== 0) throw new KawaError("dx7", { why: "la somme de contrôle ne correspond pas" });
+            break;
+        }
+    }
+    if (!data && b.length === DX_SIZE) data = b;
+    if (!data) throw new KawaError("dx7", { why: b.length + " octets, pas d'en-tête de banque" });
+    for (const x of data) if (x > 0x7F) throw new KawaError("dx7", { why: "un octet de plus de 7 bits" });
+    if (data[118] < 0x20) throw new KawaError("dx7", { why: "la première voix n'a pas de nom" });
+    const names = [];
+    for (let k = 0; k < DX_VOICES; k++) names.push(ascii(data.subarray(k * 128 + 118, k * 128 + 128)).replace(/\?/g, " ").trimEnd() || "DX7");
+    return { data: Uint8Array.from(data), names };
 }
 function parseList(b, slots) {                        // rc, then per slot: used, rate (2 B), len (3 B), name (12 B)
     const n = Math.min(slots, Math.floor((b.length - 1) / 18)), out = [];
@@ -647,6 +679,30 @@ class Fm1 {
         });
     }
     async close() { await this.link.close(); }
+    /* (Gabare) a DX7 bank (parseDx7's data): DX BEGIN, DX WRITE x 16, DX END with its CRC-32. opts: onProgress, signal */
+    sendDx7(data, opts) {
+        const o = opts || {};
+        return this._exclusive(async () => {
+            if (!this.info.gabare) throw new KawaError("nogabare");
+            if (!(data instanceof Uint8Array) || data.length !== DX_SIZE) throw new KawaError("dx7", { why: "pas 4096 octets" });
+            const link = this.link;
+            rcCheck(await link.ask(CMD.DXBEGIN, [0], DELAY.begin, b => b.length >= 2 && b[1] === 0, o.signal), "DXBEGIN");
+            if (o.onProgress) o.onProgress(0, DX_SIZE);
+            for (let off = 0; off < DX_SIZE; off += PACKET) {
+                const args = new Uint8Array(4 + PACKET);
+                args[0] = 0; args[1] = off & 0xFF; args[2] = (off >> 8) & 0xFF; args[3] = 0;
+                args.set(data.subarray(off, off + PACKET), 4);
+                const match = b => b.length >= 5 && b[1] === 0 && b[2] === args[1] && b[3] === args[2] && b[4] === 0;
+                rcCheck(await link.ask(CMD.DXWRITE, args, DELAY.write, match, o.signal), "DXWRITE");
+                if (o.onProgress) o.onProgress(off + PACKET, DX_SIZE);
+            }
+            const c = crc32(data);
+            rcCheck(await link.ask(CMD.DXEND, [0, c & 0xFF, (c >>> 8) & 0xFF, (c >>> 16) & 0xFF, (c >>> 24) & 0xFF], DELAY.end,
+                                   b => b.length >= 2 && b[1] === 0, o.signal), "DXEND");
+            this.info.dx7 = true;
+            return { voices: DX_VOICES };
+        });
+    }
 }
 
 async function connect(opts) {
@@ -708,6 +764,6 @@ return {
     CMD, CMD_NAME, RC, DELAY, PORT_RE, KawaError, ULAW,
     pack7, unpack7, frame, parseReply, crc32, headerName, header, uploadFrames, validateUpload,
     mulawByte, mulawToFloat, fromChannels, readWav, decodeWithBrowser, prepare, assertSendable, cleanName, nameFromFile,
-    Link, Fm1, findPorts, parseInfo, parseList, connect, sendAll,
+    Link, Fm1, findPorts, parseInfo, parseList, connect, sendAll, parseDx7, DX_SIZE, DX_VOICES,
 };
 });

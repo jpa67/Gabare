@@ -168,7 +168,7 @@ static int trick(const tricks_t *k, uint32_t f, int32_t *v)   /* the cell plays 
 typedef struct {
     uint8_t type, trk, note, vol, fx, fxv, fx2, fxv2;
 } ev_t;
-enum { EV_ON = 1, EV_OFF, EV_ALLOFF, EV_KILL };   /* EV_KILL: a track's voices go now (its engine changed; trk NTRK: all) */
+enum { EV_ON = 1, EV_OFF, EV_ALLOFF, EV_KILL, EV_ARP_ADD, EV_ARP_DEL, EV_ARP_CLR };   /* (Gabare) EV_ARP_*: kawa_arp.c */   /* EV_KILL: a track's voices go now (its engine changed; trk NTRK: all) */
 #define EVQ 32u
 static ev_t evq[EVQ];
 static volatile uint32_t evq_w, evq_r;

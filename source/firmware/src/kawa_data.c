@@ -11,13 +11,29 @@ static const char *const LANG_CODE[LANG_N] = {"FR", "EN", "ES"};
 
 /* ---- engines: each of the eight tracks plays one, picked with its sound (SOUND, PRESETS) */
 #define NUSR 4u                                /* the user's sample slots (kawa_core.c) */
+#define DX_NV 32u                               /* (Gabare) a DX7 bank's voices, after the FM sounds (kawa_edit.c) */
+/* (Gabare) FM SOUND's value (a signed byte, as every sound setting): 0..11 KAWA's FM sounds, 12..43 the DX7 bank's voices
+ * (as in 0.3), -128..-1 the FM-1's original voices 1..128 (kawa_mvave.h, 0.5). The knob goes KAWA, M-VAVE, the bank. */
+#define FMPAT_N (FM_NPATCH + MV_N + DX_NV)
+static int32_t fmpat_pos(int32_t v)             /* a value -> its place in the knob's order */
+{
+    return v < 0 ? (int32_t)FM_NPATCH + v + 128 : v < (int32_t)FM_NPATCH ? v : (int32_t)MV_N + v;
+}
+static int32_t fmpat_val(int32_t pos)           /* a place -> the value */
+{
+    return pos < (int32_t)FM_NPATCH ? pos : pos < (int32_t)(FM_NPATCH + MV_N) ? pos - (int32_t)FM_NPATCH - 128 : pos - (int32_t)MV_N;
+}
+static uint8_t dx_ok;                           /* (Gabare) a DX7 bank is in the flash */
+static const char *dx_name(uint32_t k);
+static const char *mv_name(uint32_t k);
 #define NTRK 6u                                /* six tracks: the FM-1's audio interrupt keeps a wide margin */
-enum { E_PULSE, E_WAVE, E_NOISE, E_FM, E_KIT, E_SAMPLE, E_N };
-static const char *const ENGINE_NAMES[LANG_N][E_N] = {{"CARRE", "ONDE", "BRUIT", "FM", "KIT", "SAMPLE"},
-                                                      {"PULSE", "WAVE", "NOISE", "FM", "KIT", "SAMPLE"},
-                                                      {"PULSO", "ONDA", "RUIDO", "FM", "KIT", "SAMPLE"}};
+enum { E_PULSE, E_WAVE, E_NOISE, E_FM, E_KIT, E_SAMPLE, E_ANALOG, E_PHASE, E_LOFI, E_VOICE, E_TRIO, E_WHEEL, E_PHYS, E_STRING, E_ADD, E_N };   /* (Fm1Studio) from E_SK0 on: Skiff's (kawa_sk.c) */
+#define E_SK0 E_ANALOG
+static const char *const ENGINE_NAMES[LANG_N][E_N] = {{"CARRE", "ONDE", "BRUIT", "FM", "KIT", "SAMPLE", "ANALOG", "PHASE", "LOFI", "VOIX", "TRIO", "ORGUE", "PHYS", "CORDE", "ADD"},
+                                                      {"PULSE", "WAVE", "NOISE", "FM", "KIT", "SAMPLE", "ANALOG", "PHASE", "LOFI", "VOICE", "TRIO", "WHEEL", "PHYS", "STRING", "ADD"},
+                                                      {"PULSO", "ONDA", "RUIDO", "FM", "KIT", "SAMPLE", "ANALOG", "FASE", "LOFI", "VOZ", "TRIO", "ORGANO", "FISICO", "CUERDA", "ADD"}};
 #define ENGINE_NAME ENGINE_NAMES[lang]
-static const uint8_t ENGINE_ICON[E_N] = {ICO_PULSE, ICO_WAVE, ICO_NOISE, ICO_FM, ICO_KIT, ICO_SAMPLE};
+static const uint8_t ENGINE_ICON[E_N] = {ICO_PULSE, ICO_WAVE, ICO_NOISE, ICO_FM, ICO_KIT, ICO_SAMPLE, ICO_LPF, ICO_SHAPE, ICO_PIXEL, ICO_VIB, ICO_TRI3, ICO_DISC, ICO_RING, ICO_BEND, ICO_VOL};
 
 /* ---- themes (OPTIONS, KNOB 1): the screen's colours. KAWA is the look of 0.1 */
 typedef struct {
@@ -54,11 +70,12 @@ static void theme_set(uint32_t k)
 static const uint16_t KNOB_COL[4] = {RGB(255, 92, 92), RGB(255, 204, 64), RGB(92, 226, 116), RGB(84, 164, 255)};
 /* one page, one colour (the page's pill, the emulator's buttons) */
 enum { PG_TRACK, PG_GRID, PG_SOUND, PG_ENV, PG_MIX, PG_MAGIC, PG_SCALE, PG_SONG, PG_PROJ, PG_OPT, PG_FX, PG_HELP, PG_BOOT,
-       PG_GROOVE, PG_SEND, PG_FILT, PG_FXSEQ, PG_N };                       /* (GROOVE last: the emulator knows the others by their number) */
+       PG_GROOVE, PG_SEND, PG_FILT, PG_FXSEQ, PG_ARP, PG_N };   /* (Gabare) PG_ARP: the arpeggiator (kawa_arp.c) */                       /* (GROOVE last: the emulator knows the others by their number) */
 static const uint16_t PAGE_COL[PG_N] = {RGB(169, 139, 255), RGB(255, 96, 146), RGB(62, 216, 255), RGB(98, 242, 154),
                                         RGB(255, 160, 60), RGB(255, 210, 90), RGB(200, 240, 90), RGB(255, 160, 60),
                                         RGB(100, 150, 255), RGB(255, 160, 60), RGB(255, 120, 200), RGB(169, 139, 255),
-                                        RGB(169, 139, 255), RGB(255, 160, 60), RGB(255, 120, 200), RGB(255, 70, 90), RGB(90, 200, 255)};
+                                        RGB(169, 139, 255), RGB(255, 160, 60), RGB(255, 120, 200), RGB(255, 70, 90), RGB(90, 200, 255),
+                                        RGB(150, 235, 200)};
 
 /* ---- the 24 parameters of a track: SOUND 1, SOUND 2 (the engine's), ENVELOPE, MIX, EFFECT, LFO */
 #define NPARAM 28u
@@ -123,6 +140,22 @@ static const char *const L_LFOR[] = {"4 MES", "2 MES", "1 MES", "1/2", "1/4", "1
 static const char *const L_LFOW[] = {"SINUS", "TRIANGLE", "CARRE", "SCIE", "HASARD", "SINE", "TRIANGLE", "SQUARE", "SAW", "RANDOM",
                                      "SENO", "TRIANG", "CUADRADA", "SIERRA", "AZAR"};
 
+/* (Fm1Studio) the value names of Skiff's engines' knobs (their own, in every language) */
+static const char *const L_SK_ANALOG_0[] = {"SAW", "SQR", "TRI", "SIN", "PWM", "SYNC", "SUB", "SAW", "SQR", "TRI", "SIN", "PWM", "SYNC", "SUB", "SAW", "SQR", "TRI", "SIN", "PWM", "SYNC", "SUB"};
+static const char *const L_SK_PHASE_0[] = {"SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP", "SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP", "SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP"};
+static const char *const L_SK_PHASE_1[] = {"-", "SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP", "-", "SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP", "-", "SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP"};
+static const char *const L_SK_PHASE_5[] = {"MIX", "RING", "MIX", "RING", "MIX", "RING"};
+static const char *const L_SK_LOFI_0[] = {"4BIT", "4B/2", "8BIT", "1BIT", "STEP", "4BIT", "4B/2", "8BIT", "1BIT", "STEP", "4BIT", "4B/2", "8BIT", "1BIT", "STEP"};
+static const char *const L_SK_LOFI_1[] = {"PLS", "TRI", "SAW", "NOIS", "WRAM", "PLS", "TRI", "SAW", "NOIS", "WRAM", "PLS", "TRI", "SAW", "NOIS", "WRAM"};
+static const char *const L_SK_LOFI_6[] = {"OFF", "OCT", "MAJ", "MIN", "OFF", "OCT", "MAJ", "MIN", "OFF", "OCT", "MAJ", "MIN"};
+static const char *const L_SK_TRIO_0[] = {"SAW3", "PLS3", "PPT", "SST", "TRI3", "S&T", "P&S", "P+N", "NOIS", "SYNC", "SYNCP", "SYNC3", "RING", "RING3", "R+S", "R+SP", "SAW3", "PLS3", "PPT", "SST", "TRI3", "S&T", "P&S", "P+N", "NOIS", "SYNC", "SYNCP", "SYNC3", "RING", "RING3", "R+S", "R+SP", "SAW3", "PLS3", "PPT", "SST", "TRI3", "S&T", "P&S", "P+N", "NOIS", "SYNC", "SYNCP", "SYNC3", "RING", "RING3", "R+S", "R+SP"};
+static const char *const L_SK_TRIO_4[] = {"LP", "BP", "HP", "NOT", "LP", "BP", "HP", "NOT", "LP", "BP", "HP", "NOT"};
+static const char *const L_SK_WHEEL_0[] = {"FLUTE", "MELLOW", "HOLLOW", "SMOOTH", "3BAR", "BLUES", "GOSPEL", "ROCK", "TOPS", "CLARI", "REED", "STRNG", "CHAPL", "BRITE", "BASS", "FULL", "FLUTE", "MELLOW", "HOLLOW", "SMOOTH", "3BAR", "BLUES", "GOSPEL", "ROCK", "TOPS", "CLARI", "REED", "STRNG", "CHAPL", "BRITE", "BASS", "FULL", "FLUTE", "MELLOW", "HOLLOW", "SMOOTH", "3BAR", "BLUES", "GOSPEL", "ROCK", "TOPS", "CLARI", "REED", "STRNG", "CHAPL", "BRITE", "BASS", "FULL"};
+static const char *const L_SK_WHEEL_4[] = {"OFF", "2ND", "3RD", "2SOFT", "3SOFT", "2SLOW", "3SLOW", "OFF", "2ND", "3RD", "2SOFT", "3SOFT", "2SLOW", "3SLOW", "OFF", "2ND", "3RD", "2SOFT", "3SOFT", "2SLOW", "3SLOW"};
+static const char *const L_SK_WHEEL_7[] = {"OFF", "SLOW", "FAST", "OFF", "SLOW", "FAST", "OFF", "SLOW", "FAST"};
+static const char *const L_SK_PHYS_0[] = {"MODAL", "STRNG", "MEMB", "SYMP", "MODAL", "STRNG", "MEMB", "SYMP", "MODAL", "STRNG", "MEMB", "SYMP"};
+static const char *const L_SK_STRING_0[] = {"NOISE", "PLUCK", "PICK", "HAMMR", "STICK", "FDBK", "NOISE", "PLUCK", "PICK", "HAMMR", "STICK", "FDBK", "NOISE", "PLUCK", "PICK", "HAMMR", "STICK", "FDBK"};
+static const char *const L_SK_ADD_0[] = {"HARM", "ODD", "WIDE", "BELL", "BAR", "DRUM", "PRIME", "FIFTH", "SUB", "PLATE", "HARM", "ODD", "WIDE", "BELL", "BAR", "DRUM", "PRIME", "FIFTH", "SUB", "PLATE", "HARM", "ODD", "WIDE", "BELL", "BAR", "DRUM", "PRIME", "FIFTH", "SUB", "PLATE"};
 #define PDN(fr, en, es) {fr, en, es}
 #define PD_NONE {{0, 0, 0}, 0, 0, 0, 0}
 #define PD_ENV {PDN("ATTAQUE", "ATTACK", "ATAQUE"), 0, 15, K_MS, 0}, {PDN("DECLIN", "DECAY", "CAIDA"), 0, 15, K_MS, 0}, \
@@ -144,7 +177,7 @@ static const pdesc_t PDESC[E_N][NPARAM] = {
     {{PD_SHAPE, 0, 4, K_LIST, L_DUTY}, PD_TONAL_REST, PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
     {{PD_SHAPE, 0, 7, K_LIST, L_WAVE}, PD_TONAL_REST, PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
     {{PD_SHAPE, 0, 1, K_LIST, L_NOISE}, PD_TONAL_REST, PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
-    {{PDN("SON FM", "PATCH", "SONIDO"), 0, FM_NPATCH - 1, K_NAMES, &FM_PATCH_NAME[0][0]},
+    {{PDN("SON FM", "PATCH", "SONIDO"), -128, FM_NPATCH + DX_NV - 1, K_NAMES, &FM_PATCH_NAME[0][0]},
      {PDN("ALGO", "ALGO", "ALGO"), 0, 32, K_LIST, L_ALG}, {PDN("RATIO", "RATIO", "RATIO"), -8, 8, K_SIGN, 0},
      {PDN("RETOUR", "FEEDBK", "RETORNO"), -7, 7, K_SIGN, 0}, {PDN("BRILLE", "BRIGHT", "BRILLO"), -15, 15, K_SIGN, 0},
      {PDN("MOD ENV", "MOD ENV", "MOD ENV"), -8, 8, K_SIGN, 0}, {PDN("DESACC", "DETUNE", "DESAFIN"), 0, 15, K_NUM, 0},
@@ -157,6 +190,96 @@ static const pdesc_t PDESC[E_N][NPARAM] = {
      {PDN("ACCORD", "TUNE", "AFINA"), -12, 12, K_SIGN, 0}, {PDN("CALE", "FIT", "AJUSTE"), 0, 1, K_LIST, L_ONOFF},
      {PDN("DUREE", "LENGTH", "LARGO"), 0, 11, K_LIST, L_DUR}, {PDN("SATURE", "DRIVE", "SATURA"), 0, 15, K_NUM, 0},
      {PDN("ECRASE", "CRUSH", "TRITURA"), 0, 7, K_NUM, 0}, {PDN("TON", "TONE", "TONO"), 0, 15, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) ANALOG, Skiff's (eng_analog.c) */
+    {{PDN("WAVE", "WAVE", "WAVE"), 0, 6, K_LIST, L_SK_ANALOG_0},
+     {PDN("DETUNE", "DETUNE", "DETUNE"), 0, 127, K_NUM, 0},
+     {PDN("MIX", "MIX", "MIX"), 0, 127, K_NUM, 0},
+     {PDN("NOISE", "NOISE", "NOISE"), 0, 127, K_NUM, 0},
+     {PDN("CUTOFF", "CUTOFF", "CUTOFF"), 0, 127, K_NUM, 0},
+     {PDN("RES", "RES", "RES"), 0, 127, K_NUM, 0},
+     {PDN("DRIVE", "DRIVE", "DRIVE"), 0, 127, K_NUM, 0},
+     {PDN("KEYTRK", "KEYTRK", "KEYTRK"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) PHASE, Skiff's (eng_phase.c) */
+    {{PDN("WAVE", "WAVE", "WAVE"), 0, 7, K_LIST, L_SK_PHASE_0},
+     {PDN("WAVE2", "WAVE2", "WAVE2"), 0, 8, K_LIST, L_SK_PHASE_1},
+     {PDN("DCW", "DCW", "DCW"), 0, 127, K_NUM, 0},
+     {PDN("ENV", "ENV", "ENV"), 0, 127, K_NUM, 0},
+     {PDN("DETUNE", "DETUNE", "DETUNE"), 0, 127, K_NUM, 0},
+     {PDN("LINE", "LINE", "LINE"), 0, 1, K_LIST, L_SK_PHASE_5},
+     {PDN("SUB", "SUB", "SUB"), 0, 127, K_NUM, 0},
+     {PDN("FOLD", "FOLD", "FOLD"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) LOFI, Skiff's (eng_lofi.c) */
+    {{PDN("CHIP", "CHIP", "CHIP"), 0, 4, K_LIST, L_SK_LOFI_0},
+     {PDN("WAVE", "WAVE", "WAVE"), 0, 4, K_LIST, L_SK_LOFI_1},
+     {PDN("DUTY", "DUTY", "DUTY"), 0, 127, K_NUM, 0},
+     {PDN("CRUSH", "CRUSH", "CRUSH"), 0, 127, K_NUM, 0},
+     {PDN("SWEEP", "SWEEP", "SWEEP"), 0, 127, K_NUM, 0},
+     {PDN("VIBRATO", "VIBRATO", "VIBRATO"), 0, 127, K_NUM, 0},
+     {PDN("ARP", "ARP", "ARP"), 0, 3, K_LIST, L_SK_LOFI_6},
+     {PDN("TONE", "TONE", "TONE"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) VOICE, Skiff's (eng_formant.c) */
+    {{PDN("VOWEL", "VOWEL", "VOWEL"), 0, 127, K_NUM, 0},
+     {PDN("VOWEL2", "VOWEL2", "VOWEL2"), 0, 127, K_NUM, 0},
+     {PDN("TALK", "TALK", "TALK"), 0, 127, K_NUM, 0},
+     {PDN("PITCH", "PITCH", "PITCH"), -12, 12, K_SIGN, 0},
+     {PDN("BUZZ", "BUZZ", "BUZZ"), 0, 127, K_NUM, 0},
+     {PDN("BREATH", "BREATH", "BREATH"), 0, 127, K_NUM, 0},
+     {PDN("Q", "Q", "Q"), 0, 127, K_NUM, 0},
+     {PDN("RANDOM", "RANDOM", "RANDOM"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) TRIO, Skiff's (eng_trio.c) */
+    {{PDN("WAVE", "WAVE", "WAVE"), 0, 15, K_LIST, L_SK_TRIO_0},
+     {PDN("PITCH2", "PITCH2", "PITCH2"), -24, 24, K_SIGN, 0},
+     {PDN("PITCH3", "PITCH3", "PITCH3"), -24, 24, K_SIGN, 0},
+     {PDN("DETUNE", "DETUNE", "DETUNE"), 0, 50, K_NUM, 0},
+     {PDN("MODE", "MODE", "MODE"), 0, 3, K_LIST, L_SK_TRIO_4},
+     {PDN("CUTOFF", "CUTOFF", "CUTOFF"), 0, 127, K_NUM, 0},
+     {PDN("RES", "RES", "RES"), 0, 127, K_NUM, 0},
+     {PDN("PW", "PW", "PW"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) WHEEL, Skiff's (eng_wheel.c) */
+    {{PDN("REG", "REG", "REG"), 0, 15, K_LIST, L_SK_WHEEL_0},
+     {PDN("SUB", "SUB", "SUB"), -8, 8, K_SIGN, 0},
+     {PDN("BODY", "BODY", "BODY"), -8, 8, K_SIGN, 0},
+     {PDN("TOP", "TOP", "TOP"), -8, 8, K_SIGN, 0},
+     {PDN("PERC", "PERC", "PERC"), 0, 6, K_LIST, L_SK_WHEEL_4},
+     {PDN("CLICK", "CLICK", "CLICK"), 0, 127, K_NUM, 0},
+     {PDN("DRIVE", "DRIVE", "DRIVE"), 0, 127, K_NUM, 0},
+     {PDN("ROTOR", "ROTOR", "ROTOR"), 0, 2, K_LIST, L_SK_WHEEL_7},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Fm1Studio) PHYS, Skiff's (eng_phys.c) */
+    {{PDN("MODEL", "MODEL", "MODEL"), 0, 3, K_LIST, L_SK_PHYS_0},
+     {PDN("STRUCT", "STRUCT", "STRUCT"), 0, 127, K_NUM, 0},
+     {PDN("BRIGHT", "BRIGHT", "BRIGHT"), 0, 127, K_NUM, 0},
+     {PDN("DAMP", "DAMP", "DAMP"), 0, 127, K_NUM, 0},
+     {PDN("POS", "POS", "POS"), 0, 127, K_NUM, 0},
+     {PDN("ACCENT", "ACCENT", "ACCENT"), 0, 127, K_NUM, 0},
+     {PDN("BOW", "BOW", "BOW"), 0, 127, K_NUM, 0},
+     {PDN("EXCITE", "EXCITE", "EXCITE"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Gabare) STRING, JIANT's (skiff/eng_string.c) */
+    {{PDN("EXCITE", "EXCITE", "EXCITE"), 0, 5, K_LIST, L_SK_STRING_0},
+     {PDN("DECAY", "DECAY", "DECAY"), 0, 127, K_NUM, 0},
+     {PDN("BRIGHT", "BRIGHT", "BRIGHT"), 0, 127, K_NUM, 0},
+     {PDN("POS", "POS", "POS"), 0, 127, K_NUM, 0},
+     {PDN("STRETCH", "STRETCH", "STRETCH"), 0, 127, K_NUM, 0},
+     {PDN("BODY", "BODY", "BODY"), 0, 127, K_NUM, 0},
+     {PDN("SIZE", "SIZE", "SIZE"), 0, 127, K_NUM, 0},
+     {PDN("BOW", "BOW", "BOW"), 0, 127, K_NUM, 0},
+     PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
+    /* (Gabare) ADD, JIANT's (skiff/eng_add.c) */
+    {{PDN("MODE", "MODE", "MODE"), 0, 9, K_LIST, L_SK_ADD_0},
+     {PDN("MORPH", "MORPH", "MORPH"), 0, 127, K_NUM, 0},
+     {PDN("BRIGHT", "BRIGHT", "BRIGHT"), 0, 127, K_NUM, 0},
+     {PDN("PARTIAL", "PARTIAL", "PARTIAL"), 0, 127, K_NUM, 0},
+     {PDN("SHIFT", "SHIFT", "SHIFT"), -64, 63, K_SIGN, 0},
+     {PDN("COMB", "COMB", "COMB"), 0, 127, K_NUM, 0},
+     {PDN("DECAY", "DECAY", "DECAY"), 0, 127, K_NUM, 0},
+     {PDN("MOTION", "MOTION", "MOTION"), -64, 63, K_SIGN, 0},
      PD_ENV, PD_MIX, PD_FX, PD_LFO, PD_MOD},
 };
 /* the pages of the SOUND page (EDIT again: the next one); the FM track has two more: its operators; a SAMPLE
@@ -183,6 +306,7 @@ typedef struct {
     const char *name[LANG_N];
     uint8_t engine;
     int8_t s[8], env[4];
+    int8_t fenv;                                /* (Fm1Studio) Skiff's engines: ENV -> FILTER (-64..63), into ENV>EFF */
 } preset_t;
 static const preset_t PRESETS[] = {
     {{"LEAD 25", "LEAD 25", "LEAD 25"}, E_PULSE, {1, 0, 3, 15, 0, 0, 3, 0}, {0, 6, 10, 5}},
@@ -240,6 +364,118 @@ static const preset_t PRESETS[] = {
     {{"MON SAMPLE 2", "MY SAMPLE 2", "MI SAMPLE 2"}, E_SAMPLE, {(int8_t)(BRK_N + 1u), 1, 0, 0, 11, 0, 0, 15}, {0, 15, 15, 3}},
     {{"MON SAMPLE 3", "MY SAMPLE 3", "MI SAMPLE 3"}, E_SAMPLE, {(int8_t)(BRK_N + 2u), 1, 0, 0, 11, 0, 0, 15}, {0, 15, 15, 3}},
     {{"MON SAMPLE 4", "MY SAMPLE 4", "MI SAMPLE 4"}, E_SAMPLE, {(int8_t)(BRK_N + 3u), 1, 0, 0, 11, 0, 0, 15}, {0, 15, 15, 3}},
+    /* (Fm1Studio) Skiff 2.5's engines: their factory sounds (skiff/eng_*.c), the envelope on KAWA's scale */
+    {{"SAW LEAD", "SAW LEAD", "SAW LEAD"}, E_ANALOG, {0, 12, 64, 0, 90, 30, 10, 64}, {1, 9, 12, 5}, 20},
+    {{"SOFT PAD", "SOFT PAD", "SOFT PAD"}, E_ANALOG, {0, 20, 64, 4, 60, 10, 0, 32}, {11, 13, 13, 14}, 10},
+    {{"SQR BASS", "SQR BASS", "SQR BASS"}, E_ANALOG, {1, 0, 0, 0, 50, 70, 40, 64}, {0, 7, 5, 3}, 30},
+    {{"PWM STR", "PWM STR", "PWM STR"}, E_ANALOG, {4, 8, 40, 0, 75, 20, 0, 48}, {7, 11, 13, 12}, 8},
+    {{"ACID", "ACID", "ACID"}, E_ANALOG, {0, 0, 0, 0, 50, 100, 25, 64}, {0, 6, 2, 3}, 48},
+    {{"SINE KEY", "SINE KEY", "SINE KEY"}, E_ANALOG, {3, 6, 50, 0, 127, 0, 0, 0}, {1, 11, 4, 9}, 0},
+    {{"RAVE", "RAVE", "RAVE"}, E_ANALOG, {4, 30, 64, 0, 85, 20, 30, 64}, {2, 11, 13, 7}, 10},
+    {{"SUB BASS", "SUB BASS", "SUB BASS"}, E_ANALOG, {3, 0, 0, 0, 40, 0, 20, 0}, {0, 7, 12, 2}, 0},
+    {{"SYNTH PLUCK", "SYNTH PLUCK", "SYNTH PLUCK"}, E_ANALOG, {0, 8, 50, 0, 30, 40, 0, 64}, {0, 12, 0, 7}, 55},
+    {{"SYNTH BRASS", "SYNTH BRASS", "SYNTH BRASS"}, E_ANALOG, {0, 10, 64, 0, 45, 20, 10, 64}, {3, 9, 11, 4}, 40},
+    {{"WIND SWEEP", "WIND SWEEP", "WIND SWEEP"}, E_ANALOG, {0, 0, 0, 90, 30, 90, 0, 0}, {7, 13, 7, 11}, 50},
+    {{"STRINGS", "STRINGS", "STRINGS"}, E_ANALOG, {4, 6, 64, 0, 92, 8, 0, 48}, {5, 13, 14, 9}, 6},
+    {{"BONE FLUTE", "BONE FLUTE", "BONE FLUTE"}, E_ANALOG, {2, 3, 30, 22, 84, 15, 0, 64}, {6, 11, 13, 8}, 6},
+    {{"WAR HORN", "WAR HORN", "WAR HORN"}, E_ANALOG, {0, 5, 64, 4, 42, 12, 20, 64}, {9, 11, 13, 11}, 30},
+    {{"DARK STRINGS", "DARK STRINGS", "DARK STRINGS"}, E_ANALOG, {1, 4, 64, 6, 40, 34, 22, 40}, {14, 13, 14, 15}, 10},
+    {{"NIGHT BASS", "NIGHT BASS", "NIGHT BASS"}, E_ANALOG, {0, 7, 64, 0, 40, 35, 15, 64}, {0, 8, 6, 3}, 45},
+    {{"NEON LEAD", "NEON LEAD", "NEON LEAD"}, E_ANALOG, {0, 14, 64, 0, 92, 25, 12, 64}, {1, 9, 13, 6}, 14},
+    {{"SUNSET PAD", "SUNSET PAD", "SUNSET PAD"}, E_ANALOG, {4, 9, 55, 0, 74, 15, 0, 48}, {10, 13, 14, 13}, 10},
+    {{"HERO BRASS", "HERO BRASS", "HERO BRASS"}, E_ANALOG, {0, 16, 64, 0, 50, 18, 8, 56}, {5, 10, 11, 6}, 44},
+    {{"SYN TOM", "SYN TOM", "SYN TOM"}, E_ANALOG, {3, 0, 0, 6, 127, 0, 25, 0}, {0, 10, 0, 7}, 0},
+    {{"QUANTA", "QUANTA", "QUANTA"}, E_ANALOG, {3, 0, 0, 0, 127, 0, 0, 0}, {0, 8, 15, 5}, 0},
+    {{"REESE", "REESE", "REESE"}, E_ANALOG, {0, 40, 64, 0, 52, 15, 30, 32}, {0, 8, 15, 3}, 10},
+    {{"DRIVE BASS", "DRIVE BASS", "DRIVE BASS"}, E_ANALOG, {0, 14, 64, 0, 62, 20, 10, 64}, {0, 8, 8, 2}, 24},
+    {{"HARD SYNC", "HARD SYNC", "HARD SYNC"}, E_ANALOG, {5, 36, 96, 0, 88, 24, 12, 64}, {1, 9, 11, 4}, 16},
+    {{"SUB SAW", "SUB SAW", "SUB SAW"}, E_ANALOG, {6, 0, 80, 0, 70, 22, 6, 64}, {0, 7, 13, 2}, 20},
+    {{"PD BRASS", "PD BRASS", "PD BRASS"}, E_PHASE, {0, 0, 30, 90, 0, 0, 0, 0}, {1, 9, 11, 4}, 0},
+    {{"PD ORGAN", "PD ORGAN", "PD ORGAN"}, E_PHASE, {3, 0, 40, 0, 0, 0, 0, 0}, {0, 15, 15, 3}, 0},
+    {{"PD STRINGS", "PD STRINGS", "PD STRINGS"}, E_PHASE, {0, 4, 50, 40, 12, 0, 0, 0}, {4, 13, 12, 9}, 0},
+    {{"RESO", "RESO", "RESO"}, E_PHASE, {5, 0, 60, 60, 0, 0, 0, 0}, {0, 9, 4, 7}, 0},
+    {{"PD BELL", "PD BELL", "PD BELL"}, E_PHASE, {6, 0, 80, 50, 0, 0, 0, 0}, {0, 14, 0, 13}, 0},
+    {{"WIRE", "WIRE", "WIRE"}, E_PHASE, {4, 7, 70, 40, 7, 0, 0, 0}, {1, 11, 9, 7}, 0},
+    {{"NEUTRINO", "NEUTRINO", "NEUTRINO"}, E_PHASE, {3, 0, 20, 70, 0, 0, 0, 0}, {0, 11, 0, 10}, 0},
+    {{"PD BASS", "PD BASS", "PD BASS"}, E_PHASE, {0, 0, 50, 80, 4, 0, 60, 0}, {0, 7, 7, 2}, 0},
+    {{"SOFT KEYS", "SOFT KEYS", "SOFT KEYS"}, E_PHASE, {3, 0, 30, 60, 6, 0, 0, 0}, {0, 12, 4, 7}, 0},
+    {{"PULSE LD", "PULSE LD", "PULSE LD"}, E_LOFI, {0, 0, 32, 0, 0, 20, 0, 127}, {0, 7, 11, 3}, 0},
+    {{"WAVE BASS", "WAVE BASS", "WAVE BASS"}, E_LOFI, {1, 1, 0, 0, 0, 0, 0, 90}, {0, 5, 8, 2}, 0},
+    {{"ARP 8BIT", "ARP 8BIT", "ARP 8BIT"}, E_LOFI, {2, 0, 96, 0, 0, 0, 2, 110}, {0, 7, 9, 4}, 0},
+    {{"WAVE LEAD", "WAVE LEAD", "WAVE LEAD"}, E_LOFI, {0, 4, 92, 0, 0, 18, 0, 110}, {0, 9, 11, 3}, 0},
+    {{"STEP LEAD", "STEP LEAD", "STEP LEAD"}, E_LOFI, {4, 0, 40, 34, 0, 16, 0, 127}, {0, 8, 15, 6}, 0},
+    {{"PHOTON", "PHOTON", "PHOTON"}, E_LOFI, {2, 1, 64, 0, 16, 0, 0, 120}, {0, 9, 0, 4}, 0},
+    {{"TRI BASS", "TRI BASS", "TRI BASS"}, E_LOFI, {0, 1, 64, 0, 0, 0, 0, 100}, {0, 7, 11, 2}, 0},
+    {{"CHIP BELL", "CHIP BELL", "CHIP BELL"}, E_LOFI, {2, 0, 20, 0, 30, 0, 0, 110}, {0, 9, 0, 5}, 0},
+    {{"CHOIR AAH", "CHOIR AAH", "CHOIR AAH"}, E_VOICE, {0, 0, 0, 0, 40, 22, 60, 0}, {12, 13, 14, 14}, 0},
+    {{"VOX LEAD", "VOX LEAD", "VOX LEAD"}, E_VOICE, {32, 0, 0, 2, 90, 8, 72, 0}, {1, 9, 12, 6}, 0},
+    {{"WOW BASS", "WOW BASS", "WOW BASS"}, E_VOICE, {95, 0, 68, 0, 100, 0, 80, 0}, {0, 9, 8, 3}, 0},
+    {{"WHISPER", "WHISPER", "WHISPER"}, E_VOICE, {0, 95, 88, 3, 50, 120, 50, 0}, {5, 13, 13, 13}, 0},
+    {{"CRYPT CHOIR", "CRYPT CHOIR", "CRYPT CHOIR"}, E_VOICE, {112, 0, 0, -3, 34, 30, 64, 14}, {13, 13, 14, 14}, 0},
+    {{"MONK CHANT", "MONK CHANT", "MONK CHANT"}, E_VOICE, {95, 0, 96, -5, 80, 12, 80, 0}, {5, 11, 14, 12}, 0},
+    {{"DREAM CHOIR", "DREAM CHOIR", "DREAM CHOIR"}, E_VOICE, {0, 20, 0, 3, 55, 45, 55, 8}, {11, 13, 14, 14}, 0},
+    {{"ROBOT TALK", "ROBOT TALK", "ROBOT TALK"}, E_VOICE, {20, 100, 40, -12, 110, 4, 90, 30}, {0, 9, 12, 3}, 0},
+    {{"FAT BASS", "FAT BASS", "FAT BASS"}, E_TRIO, {0, 0, -12, 9, 0, 62, 45, 64}, {0, 7, 7, 2}, 40},
+    {{"ARP LEAD", "ARP LEAD", "ARP LEAD"}, E_TRIO, {2, 12, 0, 4, 0, 88, 25, 32}, {0, 7, 11, 3}, 8},
+    {{"SYNC LEAD", "SYNC LEAD", "SYNC LEAD"}, E_TRIO, {9, 9, 0, 0, 0, 82, 30, 64}, {1, 9, 12, 4}, 18},
+    {{"RING BELL", "RING BELL", "RING BELL"}, E_TRIO, {13, 0, 18, 6, 1, 96, 30, 64}, {0, 13, 0, 11}, 0},
+    {{"CHIP CHOIR", "CHIP CHOIR", "CHIP CHOIR"}, E_TRIO, {1, 0, 12, 7, 1, 62, 95, 40}, {9, 13, 13, 12}, 30},
+    {{"TURBO SYNC", "TURBO SYNC", "TURBO SYNC"}, E_TRIO, {9, 7, 0, 3, 0, 92, 28, 64}, {1, 9, 12, 4}, 20},
+    {{"NEON ARP", "NEON ARP", "NEON ARP"}, E_TRIO, {1, 12, 0, 5, 0, 70, 35, 40}, {0, 8, 0, 4}, 36},
+    {{"COLLIDER", "COLLIDER", "COLLIDER"}, E_TRIO, {13, 0, 23, 9, 2, 60, 50, 64}, {0, 9, 0, 6}, 0},
+    {{"DIRTY BASS", "DIRTY BASS", "DIRTY BASS"}, E_TRIO, {1, -12, 0, 8, 1, 62, 85, 30}, {0, 5, 6, 2}, 35},
+    {{"FULL ORGAN", "FULL ORGAN", "FULL ORGAN"}, E_WHEEL, {15, 0, 0, 0, 0, 30, 20, 1}, {0, 8, 15, 4}, 0},
+    {{"JAZZ PERC", "JAZZ PERC", "JAZZ PERC"}, E_WHEEL, {4, 0, 0, 0, 2, 50, 8, 1}, {0, 8, 15, 4}, 0},
+    {{"GOSPEL", "GOSPEL", "GOSPEL"}, E_WHEEL, {6, 0, 0, 0, 1, 60, 40, 2}, {0, 8, 15, 4}, 0},
+    {{"SOFT FLUTE", "SOFT FLUTE", "SOFT FLUTE"}, E_WHEEL, {1, 0, -2, 0, 0, 10, 0, 1}, {0, 8, 15, 6}, 0},
+    {{"ROCK DRIVE", "ROCK DRIVE", "ROCK DRIVE"}, E_WHEEL, {7, 0, 0, 0, 0, 70, 100, 2}, {0, 8, 15, 4}, 0},
+    {{"CATHEDRAL", "CATHEDRAL", "CATHEDRAL"}, E_WHEEL, {12, 2, 0, 0, 0, 6, 0, 0}, {5, 8, 15, 9}, 0},
+    {{"PEDAL BASS", "PEDAL BASS", "PEDAL BASS"}, E_WHEEL, {14, 4, 0, -4, 0, 20, 10, 0}, {0, 8, 15, 3}, 0},
+    {{"CLARINET", "CLARINET", "CLARINET"}, E_WHEEL, {9, 0, 2, -5, 0, 0, 14, 1}, {2, 8, 14, 4}, 0},
+    {{"BELL TREE", "BELL TREE", "BELL TREE"}, E_PHYS, {0, 70, 100, 106, 12, 100, 0, 6}, {0, 14, 15, 14}, 0},
+    {{"MARIMBA", "MARIMBA", "MARIMBA"}, E_PHYS, {0, 116, 38, 40, 24, 90, 0, 30}, {0, 13, 15, 6}, 0},
+    {{"PLUCK", "PLUCK", "PLUCK"}, E_PHYS, {1, 56, 72, 84, 40, 96, 0, 0}, {0, 14, 15, 7}, 0},
+    {{"BOWED METAL", "BOWED METAL", "BOWED METAL"}, E_PHYS, {0, 98, 70, 112, 10, 80, 90, 0}, {7, 13, 15, 13}, 0},
+    {{"KALIMBA", "KALIMBA", "KALIMBA"}, E_PHYS, {0, 34, 16, 56, 100, 90, 0, 48}, {0, 14, 15, 7}, 0},
+    {{"HAND DRUM", "HAND DRUM", "HAND DRUM"}, E_PHYS, {2, 112, 76, 56, 44, 100, 14, 24}, {0, 14, 15, 8}, 0},
+    {{"TOMS", "TOMS", "TOMS"}, E_PHYS, {2, 0, 52, 40, 30, 100, 40, 30}, {0, 14, 15, 9}, 0},
+    {{"DRONE STRING", "DRONE STRING", "DRONE STRING"}, E_PHYS, {3, 127, 80, 88, 64, 100, 92, 0}, {0, 14, 15, 13}, 0},
+    {{"HARP", "HARP", "HARP"}, E_PHYS, {3, 8, 62, 74, 60, 90, 0, 0}, {0, 14, 15, 11}, 0},
+    {{"HARPSICHORD", "HARPSICHORD", "HARPSICHORD"}, E_PHYS, {1, 44, 112, 76, 10, 127, 0, 24}, {0, 14, 15, 5}, 0},
+    {{"UPRIGHT", "UPRIGHT", "UPRIGHT"}, E_PHYS, {1, 60, 60, 90, 20, 127, 0, 60}, {0, 14, 15, 4}, 0},
+    /* (Gabare) JIANT 0.9.9's STRING and ADD: their factory sounds (in JIANT's browsing order), the envelope on KAWA's scale */
+    {{"NYLON", "NYLON", "NYLON"}, E_STRING, {1, 72, 52, 28, 0, 60, 40, 0}, {0, 8, 15, 15}, 0},
+    {{"STEEL GTR", "STEEL GTR", "STEEL GTR"}, E_STRING, {2, 86, 88, 24, 6, 40, 52, 0}, {0, 8, 15, 15}, 0},
+    {{"HARP", "HARP", "HARP"}, E_STRING, {1, 96, 62, 64, 0, 30, 30, 0}, {0, 8, 15, 15}, 0},
+    {{"KOTO", "KOTO", "KOTO"}, E_STRING, {2, 78, 98, 14, 16, 30, 62, 0}, {0, 8, 15, 15}, 0},
+    {{"BANJO", "BANJO", "BANJO"}, E_STRING, {2, 52, 112, 10, 4, 90, 92, 0}, {0, 8, 15, 14}, 0},
+    {{"PIANO", "PIANO", "PIANO"}, E_STRING, {3, 104, 76, 18, 42, 20, 22, 0}, {0, 8, 15, 13}, 0},
+    {{"DULCIMER", "DULCIMER", "DULCIMER"}, E_STRING, {3, 92, 100, 20, 26, 36, 60, 0}, {0, 8, 15, 15}, 0},
+    {{"MARIMBA", "MARIMBA", "MARIMBA"}, E_STRING, {4, 56, 40, 64, 72, 80, 70, 0}, {0, 8, 15, 11}, 0},
+    {{"PLUCK BASS", "PLUCK BASS", "PLUCK BASS"}, E_STRING, {1, 62, 36, 20, 0, 50, 10, 0}, {0, 8, 15, 11}, 0},
+    {{"BOWED", "BOWED", "BOWED"}, E_STRING, {0, 118, 46, 30, 0, 50, 40, 70}, {3, 8, 15, 14}, 0},
+    {{"EBOW", "EBOW", "EBOW"}, E_STRING, {5, 127, 44, 40, 50, 20, 64, 90}, {2, 8, 8, 14}, 0},
+    {{"FEEDBACK", "FEEDBACK", "FEEDBACK"}, E_STRING, {5, 90, 70, 24, 60, 70, 40, 60}, {0, 8, 15, 13}, 0},
+    {{"SHOEGAZE", "SHOEGAZE", "SHOEGAZE"}, E_STRING, {5, 110, 50, 30, 55, 100, 90, 70}, {4, 8, 15, 15}, 0},
+    {{"SQUEAL", "SQUEAL", "SQUEAL"}, E_STRING, {5, 80, 96, 16, 70, 110, 12, 30}, {0, 8, 15, 11}, 0},
+    {{"METAL STR", "METAL STR", "METAL STR"}, E_STRING, {0, 100, 120, 10, 112, 0, 0, 0}, {0, 8, 15, 15}, 0},
+    {{"INIT STRING", "INIT STRING", "INIT STRING"}, E_STRING, {1, 72, 60, 28, 0, 40, 40, 0}, {0, 8, 15, 13}, 0},
+    {{"ADD ORGAN", "ADD ORGAN", "ADD ORGAN"}, E_ADD, {0, 0, 76, 127, 0, 0, 127, 0}, {0, 8, 15, 4}, 0},
+    {{"PRIME ORG", "PRIME ORG", "PRIME ORG"}, E_ADD, {6, 0, 84, 127, 0, 0, 127, 0}, {1, 8, 15, 4}, 0},
+    {{"ADD SAW", "ADD SAW", "ADD SAW"}, E_ADD, {0, 0, 92, 127, 0, 0, 127, 0}, {1, 9, 12, 3}, 30},
+    {{"HOLLOW", "HOLLOW", "HOLLOW"}, E_ADD, {1, 0, 84, 127, 0, 30, 127, 0}, {3, 9, 14, 9}, 0},
+    {{"AIR PAD", "AIR PAD", "AIR PAD"}, E_ADD, {2, 64, 100, 127, -10, 20, 127, 50}, {8, 8, 15, 11}, 0},
+    {{"QUINT", "QUINT", "QUINT"}, E_ADD, {7, 0, 80, 127, 0, 24, 127, 20}, {1, 8, 15, 5}, 0},
+    {{"BELL", "BELL", "BELL"}, E_ADD, {3, 0, 100, 127, 0, 0, 74, 0}, {0, 8, 15, 9}, 0},
+    {{"VIBES", "VIBES", "VIBES"}, E_ADD, {4, 0, 72, 127, 0, 0, 76, 0}, {0, 8, 15, 6}, 0},
+    {{"GLASS", "GLASS", "GLASS"}, E_ADD, {2, 0, 118, 127, -20, 0, 80, 30}, {0, 8, 15, 9}, 0},
+    {{"SUB ADD", "SUB ADD", "SUB ADD"}, E_ADD, {1, 0, 20, 40, 0, 0, 127, 0}, {0, 8, 9, 2}, 0},
+    {{"SKIN TOM", "SKIN TOM", "SKIN TOM"}, E_ADD, {5, 0, 92, 127, 0, 0, 46, 0}, {0, 8, 15, 3}, 0},
+    {{"SWELL", "SWELL", "SWELL"}, E_ADD, {0, 0, 104, 127, 0, 0, 127, -50}, {2, 8, 15, 7}, 0},
+    {{"DRONE", "DRONE", "DRONE"}, E_ADD, {8, 50, 70, 127, 0, 30, 127, 40}, {4, 8, 15, 13}, 0},
+    {{"GONG", "GONG", "GONG"}, E_ADD, {9, 30, 104, 127, -12, 0, 88, 30}, {0, 8, 15, 13}, 0},
+    {{"RADIO", "RADIO", "RADIO"}, E_ADD, {0, 0, 96, 127, 40, 0, 127, 20}, {0, 8, 15, 11}, 0},
+    {{"INIT ADD", "INIT ADD", "INIT ADD"}, E_ADD, {0, 0, 70, 127, 0, 0, 127, 0}, {0, 8, 15, 4}, 0},
 };
 #define KIT_DEMO 6                              /* the demo's kit (its first knob): SNES */
 #define BRK_DEMO 3                              /* the demo's break: ABYSSE (the boss is breakcore) */
@@ -426,7 +662,8 @@ static const char *pd_value(const pdesc_t *d, int32_t v)
 {
     uint32_t n = (uint32_t)(d->hi - d->lo + 1);
     v = clampi(v, d->lo, d->hi);
-    if (d->kind == K_NAMES)
-        return d->list[(uint32_t)lang * FM_NPATCH + (uint32_t)(v - d->lo)];
+    if (d->kind == K_NAMES)                     /* ((Gabare) FM SOUND: KAWA's, the FM-1's original voices, the DX7 bank's) */
+        return v < 0 ? mv_name((uint32_t)(v + 128)) : v >= (int32_t)FM_NPATCH ? dx_name((uint32_t)v - FM_NPATCH)
+                                                                             : d->list[(uint32_t)lang * FM_NPATCH + (uint32_t)v];
     return d->list[(uint32_t)lang * n + (uint32_t)(v - d->lo)];
 }

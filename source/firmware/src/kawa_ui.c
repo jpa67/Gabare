@@ -18,11 +18,11 @@
 
 static const char *const PAGE_NAMES[LANG_N][PG_N] = {
     {"PISTES", "GRILLE", "SON", "ENVELOPPE", "MIX", "MAGIE", "GAMME", "CHAINE", "PROJETS", "OPTIONS", "EFFETS", "AIDE", "",
-     "GROOVE", "ENVOIS", "FILTRE", "SEQ FX"},
+     "GROOVE", "ENVOIS", "FILTRE", "SEQ FX", "ARPEGE"},
     {"TRACKS", "GRID", "SOUND", "ENVELOPE", "MIX", "MAGIC", "SCALE", "SONG", "PROJECTS", "OPTIONS", "EFFECTS", "HELP", "",
-     "GROOVE", "SENDS", "FILTER", "FX SEQ"},
+     "GROOVE", "SENDS", "FILTER", "FX SEQ", "ARPEGGIO"},
     {"PISTAS", "REJILLA", "SONIDO", "ENVOLVENTE", "MEZCLA", "MAGIA", "ESCALA", "CANCION", "PROYECTOS", "OPCIONES", "EFECTOS",
-     "AYUDA", "", "GROOVE", "ENVIOS", "FILTRO", "SEC FX"}};
+     "AYUDA", "", "GROOVE", "ENVIOS", "FILTRO", "SEC FX", "ARPEGIO"}};
 #define PAGE_NAME PAGE_NAMES[lang]
 static uint8_t page = PG_BOOT, page_back = PG_TRACK, help_pg = PG_TRACK;
 static uint8_t cur_row, cur_trk, ui_pat, rec, snd_page, grid_page, fx_bank, fx_sticky, mg_scope, follow = 1, fm_op = 1;
@@ -69,7 +69,8 @@ static char knob_lab[4][24];                    /* what each knob does on this p
 static char help_lab[4][24];
 #define MASTER NTRK                             /* MIX: the strip after the tracks */
 
-static struct { uint8_t lang, theme; int8_t oct; uint8_t clock, font, metro, mvol; } set;   /* kept in the settings sector (0.2 kept
+static struct { uint8_t lang, theme; int8_t oct; uint8_t clock, font, metro, mvol, arate, aoct, agate; } set;   /* ((Gabare)
+                                                                                          * arate aoct agate: the arpeggiator's) */   /* kept in the settings sector (0.2 kept
                                                                                           * the first four bytes, 0.4 five) */
 static uint8_t set_dirty;
 static uint32_t set_ms;
@@ -1071,13 +1072,18 @@ static void draw_sound(void)
     if (g_vis(40, 102)) {
         g_rect(0, 40, 240, 104, C_BG);           /* (to the cards at 144: no row left unpainted) */
         if (sp == SP_SON1) {                    /* the engines: the factory sound's (PRESETS), or ARP + PRESETS (FM: one track only) */
-            static const char *const E3[LANG_N][E_N] = {{"CAR", "OND", "BRU", "FM", "KIT", "SMP"},
-                                                         {"PUL", "WAV", "NOI", "FM", "KIT", "SMP"},
-                                                         {"PUL", "OND", "RUI", "FM", "KIT", "SMP"}};
-            for (i = 0; i < E_N; i++) {
-                int32_t x = 4 + (int32_t)i * 39;
-                int on = i == e, off = i == E_FM && !fm_free(t);
-                g_rrect(x, 41, 37, 14, on ? col : C_BG2);
+            static const char *const E3[LANG_N][E_N] = {{"CAR", "OND", "BRU", "FM", "KIT", "SMP", "ANA", "PHA", "LOF", "VOI", "TRI", "ORG", "PHY", "COR", "ADD"},
+                                                         {"PUL", "WAV", "NOI", "FM", "KIT", "SMP", "ANA", "PHA", "LOF", "VOI", "TRI", "WHE", "PHY", "STR", "ADD"},
+                                                         {"PUL", "OND", "RUI", "FM", "KIT", "SMP", "ANA", "FAS", "LOF", "VOZ", "TRI", "ORG", "FIS", "CUE", "ADD"}};
+            /* (Fm1Studio) more engines than fit: seven at a time around this one, a mark where others are */
+            const uint32_t shown = E_N < 7u ? E_N : 7u, first = e < 3u ? 0u : e - 3u > E_N - shown ? E_N - shown : e - 3u;
+            const int32_t step = 236 / (int32_t)shown;
+            if (first) g_rect(0, 45, 2, 6, col);
+            if (first + shown < E_N) g_rect(238, 45, 2, 6, col);
+            for (i = first; i < first + shown; i++) {
+                int32_t x = 4 + (int32_t)(i - first) * step;
+                int on = i == e, off = !eng_free(t, i);
+                g_rrect(x, 41, step - 2, 14, on ? col : C_BG2);
                 g_icon(x + 3, 44, ENGINE_ICON[i], on ? C_INK : off ? C_RULE : col, 1);
                 g_text(x + 13, 41, E3[lang][i], on ? C_INK : off ? C_RULE : C_TXT, T_CROP | (on ? T_BOLD : 0));
             }
@@ -1163,6 +1169,16 @@ static void draw_sound(void)
                 g_rrect(x, y, 26, 36, lit ? col : g_mix(C_BG2, col, 50));
                 g_text_c(x + 13, y + 12, drum_code(t, i, 0), lit ? C_INK : C_TXT, T_CROP | T_BOLD);
             }
+        } else if (is_sk(e)) {                  /* (Gabare) Skiff's engine: its name, the page's, its eight knobs as bars */
+            const char *pt = sk_engine(e)->page_title[sp == SP_SON2];
+            g_text(14, 62, ENGINE_NAME[e], col, T_CROP | T_BOLD);
+            if (pt) g_text(226 - g_text_w(pt), 62, pt, C_FAINT, T_CROP);
+            for (i = 0; i < 8u; i++) {
+                int32_t x = 18 + (int32_t)i * 26, v = clampi(p[P_S0 + i], 0, 127), h = v * 46 / 127;
+                int lit = (sp == SP_SON2) == (i >= 4u);
+                g_rect(x, 84, 18, 46, C_BG);
+                if (h) g_rect(x, 130 - h, 18, h, lit ? KNOB_COL[i & 3u] : C_RULE);
+            }
         } else
             draw_smp(t, col, sp == SP_SMP);
     }
@@ -1196,7 +1212,10 @@ static void draw_sound(void)
         if (!d->name[0]) { card(i, x, 146, 76, "", "", 0, 0); hint_none(i); continue; }
         param_text(d, v, s, k == P_DEC || k == P_REL);
         s[8] = 0;
-        card(i, x, 146, 76, param_name(t, k), s, v - d->lo, d->hi - d->lo);
+        if (d->kind == K_NAMES)                 /* (Gabare) FM SOUND's bar: its place in the knob's order */
+            card(i, x, 146, 76, param_name(t, k), s, fmpat_pos(v), (int32_t)FMPAT_N - 1);
+        else
+            card(i, x, 146, 76, param_name(t, k), s, v - d->lo, d->hi - d->lo);
         hint(i, param_name(t, k), "", s);
     }
 }
@@ -1677,6 +1696,80 @@ static void draw_hold(void)
 }
 
 /* ---- SCALE */
+/* ---- (Gabare) ARPEGGIO: the arpeggiator (kawa_arp.c). K1 MODE, K2 RATE, K3 OCTAVES, K4 GATE; ARP: LATCH */
+static uint8_t arp_latch;                       /* the notes stay after the keys (ARP on the page) */
+static uint32_t arp_keys;                       /* the keys held that went to the arpeggiator */
+static const char *const ARP_MODES[LANG_N][AM_N] = {{"OFF", "MONTE", "DESCEND", "MONTE+DESC", "HASARD", "COMME JOUE"},
+                                                    {"OFF", "UP", "DOWN", "UP+DOWN", "RANDOM", "AS PLAYED"},
+                                                    {"OFF", "SUBE", "BAJA", "SUBE+BAJA", "AZAR", "COMO TOCADO"}};
+static const char *const ARP_RATES[AR_N] = {"1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"};
+static void arp_relatch(void)                   /* LATCH off: the arpeggio keeps only the keys still held */
+{
+    uint32_t k;
+    ev_push(EV_ARP_CLR, 0, 0, 0, 0, 0);
+    for (k = 0; k < 27u; k++)
+        if (arp_keys >> k & 1u)
+            ev_push(EV_ARP_ADD, key_trk[k], key_note[k], brush_vol[key_trk[k] % NTRK], 0, 0);
+}
+static void write_cell(uint32_t pi, uint32_t r, uint32_t t, uint32_t note, uint32_t vol, uint32_t fx, uint32_t fxv, int merge);
+static void arp_drain(void)                     /* REC: the notes the arpeggio played, into their rows */
+{
+    while (arp_wq_r != arp_wq_w) {
+        const arp_w_t *w = &arp_wq[arp_wq_r % ARP_WQ];
+        if (w->pat < NPAT && w->row < NROW && w->trk < NTRK)
+            write_cell(w->pat, w->row, w->trk, w->note, w->vol, w->delay ? FX_DELAY : FX_NONE, w->delay, 1);
+        arp_wq_r++;
+    }
+}
+static void arp_note_name(char *s, uint32_t n)
+{
+    s[0] = 0;
+    str_cat(s, NOTE_NAME[n % 12u]);
+    fmt_u(s + str_len(s), n / 12u ? n / 12u - 1u : 0u, 1);
+}
+static void draw_arp(void)
+{
+    uint16_t pc = PAGE_COL[PG_ARP];
+    uint32_t i, t = trk(), n = arp_count, now = arp_now, tonal = IS_TONAL(t);
+    char s[24];
+    if (g_vis(20, 204)) g_rect(0, 20, 240, 204, C_BG);
+    s[0] = 0;                                   /* the mode, in a pill (the large font has digits and a few letters) */
+    str_cat(s, ARP_MODES[lang][arp_mode % AM_N]);
+    g_rrect(8, 26, g_text_w(s) + 16, 28, arp_mode ? pc : C_BG2);
+    g_text(16, 32, s, arp_mode ? C_INK : C_FAINT, T_BOLD | T_CROP);
+    s[0] = 0;
+    str_cat(s, ARP_RATES[arp_rate % AR_N]);
+    str_cat(s, "  OCT ");
+    fmt_u(s + str_len(s), arp_oct, 0);
+    g_text(12, 62, s, C_TXT, T_BOLD | T_CROP);
+    g_text(12, 76, arp_latch ? TR("ARP: NOTES TENUES", "ARP: LATCHED", "ARP: NOTAS FIJAS")
+                             : TR("ARP: TENIR LES NOTES", "ARP: LATCH THE NOTES", "ARP: MANTENER NOTAS"),
+           arp_latch ? C_GOLD : C_FAINT, T_CROP);
+    for (i = 0; i < ARP_MAXN; i++) {            /* the notes held, as played; the one sounding lit */
+        int32_t x = 6 + (int32_t)(i % 4u) * 58, y = 98 + (int32_t)(i / 4u) * 40;
+        uint32_t note = i < n ? arp_list[i] : 0u, lit = note && now && (now % 12u) == (note % 12u);
+        g_rrect(x, y, 54, 34, !note ? C_BG2 : lit ? C_GOLD : g_mix(C_BG2, pc, 50));
+        if (note) {
+            arp_note_name(s, note);
+            g_text_c(x + 27, y + 11, s, lit ? C_INK : C_WHITE, T_BOLD | T_CROP);
+        }
+    }
+    if (!arp_mode)
+        g_text(8, 182, TR("K1: CHOISIR UN MODE", "K1: PICK A MODE", "K1: ELEGIR UN MODO"), C_MID, T_CROP);
+    else if (!tonal)
+        g_text(8, 182, TR("PISTE SANS NOTES (KIT)", "NO NOTES ON THIS TRACK", "PISTA SIN NOTAS (KIT)"), C_REC, T_CROP);
+    else
+        g_text(8, 182, TR("TIENS DES TOUCHES", "HOLD SOME KEYS", "MANTEN TECLAS"), C_MID, T_CROP);
+    g_text(8, 196, TR("REC + PLAY: IL S'ECRIT", "REC + PLAY: IT IS WRITTEN", "REC + PLAY: SE ESCRIBE"), C_FAINT, T_CROP);
+    hint(0, TR("MODE", "MODE", "MODO"), "", ARP_MODES[lang][arp_mode % AM_N]);
+    hint(1, TR("VITESSE", "RATE", "VELOCIDAD"), "", ARP_RATES[arp_rate % AR_N]);
+    fmt_u(s, arp_oct, 0);
+    hint(2, TR("OCTAVES", "OCTAVES", "OCTAVAS"), "OCT", s);
+    if (arp_gate >= ARP_GATE_N) { s[0] = 0; str_cat(s, "LEGATO"); }
+    else { fmt_u(s, arp_gate * 100u / ARP_GATE_N, 0); str_cat(s, "%"); }
+    hint(3, TR("DUREE", "GATE", "DURACION"), "", s);
+}
+
 static void draw_scale(void)
 {
     uint32_t i, mask = SCALES[prj.scale % 12u].mask;
@@ -2089,6 +2182,10 @@ static const help_t HELP_FXSEQ[LANG_N] = {   /* the fourth page of FX */
     {{"ENVOIS/LIVE/FILTRE", "-", "MOTIF"}, {"K1: L'EFFET  BLANCHE: UN PAS", "OCT: PAS 1-16 / 17-32", "ARP: EFFACE  FX: RETOUR"}},
     {{"SENDS/LIVE/FILTER", "-", "PATTERN"}, {"K1: THE FX  WHITE KEY: A STEP", "OCT: STEPS 1-16 / 17-32", "ARP: CLEARS  FX: BACK"}},
     {{"ENVIOS/LIVE/FILTRO", "-", "PATRON"}, {"K1: EL EFECTO  BLANCA: UN PASO", "OCT: PASOS 1-16 / 17-32", "ARP: BORRA  FX: VOLVER"}}};
+static const help_t HELP_ARP[LANG_N] = {   /* (Gabare) the arpeggiator */
+    {{"-", "PISTE", "-"}, {"TOUCHES TENUES: L'ARPEGE", "ARP: TENIR LES NOTES", "REC + PLAY: S'ECRIT"}},
+    {{"-", "TRACK", "-"}, {"KEYS HELD: THE ARPEGGIO", "ARP: LATCH THE NOTES", "REC + PLAY: WRITES IT"}},
+    {{"-", "PISTA", "-"}, {"TECLAS: EL ARPEGIO", "ARP: MANTENER NOTAS", "REC + PLAY: SE ESCRIBE"}}};
 static const help_t HELP_GROOVE[LANG_N] = {   /* GROOVE, and two pages of SOUND (EDIT): TABLE, SAMPLE EDIT */
     {{"CHAINE / OPTIONS", "PAS DU GROOVE", "-"}, {"BLANCHE: UN PAS  K1: TICKS", "6 TICKS: UNE LIGNE DROITE", "GLO: LES OPTIONS"}},
     {{"SONG / OPTIONS", "GROOVE STEP", "-"}, {"WHITE KEY: A STEP K1: TICKS", "6 TICKS: A STRAIGHT ROW", "GLO: THE OPTIONS"}},
@@ -2110,6 +2207,7 @@ static void draw_help(void)
                       : help_pg == PG_SEND ? &HELP_SEND[lang]
                       : help_pg == PG_FILT ? &HELP_FILT[lang]
                       : help_pg == PG_FXSEQ ? &HELP_FXSEQ[lang]
+                      : help_pg == PG_ARP ? &HELP_ARP[lang]
                       : help_pg == PG_SOUND && hsp == SP_TABLE ? &HELP_TABLE[lang]
                       : help_pg == PG_SOUND && hsp == SP_SMP ? &HELP_SMP[lang] : &HELP[lang][help_pg < PG_HELP ? help_pg : 0];
     static const char *const ENC[3] = {"SELECT", "ALGO", "PRESETS"};
@@ -2163,7 +2261,10 @@ static void draw_help(void)
     hint(3, "", "", "");
 }
 
-/* ---- the boot: Omnipotard's dog in 32 bits (kawa_photo.h), notes out of his headphones, stars that twinkle */
+/* ---- the boot: (Fm1Studio) a night sky instead of Omnipotard's dog photo (kawa_photo.h, 58 KB of flash given to the
+ * engines), its stars that twinkle, notes rising; KAWA's title and credit stay */
+static const uint8_t BOOT_STAR[4][2] = {{40, 12}, {22, 50}, {204, 96}, {228, 106}};
+#define BOOT_NSTAR 4u
 static void g_text_sh(int32_t x, int32_t y, const char *s, uint16_t c, uint32_t mode)   /* with a shadow */
 {
     g_text(x + 1, y + 1, s, RGB(8, 6, 20), mode);
@@ -2172,7 +2273,7 @@ static void g_text_sh(int32_t x, int32_t y, const char *s, uint16_t c, uint32_t 
 static void draw_boot(void)
 {
     uint32_t t = fm1_ms - boot_ms, i;
-    g_pic(0, 0, BOOT_IMG, 240, 240, BOOT_PAL);
+    g_rect(0, 0, 240, 240, RGB(14, 12, 34));
     for (i = 0; i < BOOT_NSTAR; i++) {          /* the stars twinkle, each in its turn */
         uint32_t ph = (t / 70u + i * 5u) % 14u;
         int32_t sx = BOOT_STAR[i][0], sy = BOOT_STAR[i][1];
@@ -2188,10 +2289,16 @@ static void draw_boot(void)
         int32_t nx = 34 - (int32_t)(ph / 60u) + (int32_t)((ph / 120u) % 3u), ny = 104 - (int32_t)(ph / 15u);
         if (ny > 4) g_icon(nx < 0 ? 0 : nx, ny, ICO_NOTE, TRK_COL[(i * 3u) % NTRK], 2);
     }
-    g_text_l(233 - 64 + 1, 9, "KAWA", RGB(8, 6, 20));
-    g_text_l(233 - 64, 8, "KAWA", C_WHITE);
+    g_text_l(233 - 96 + 1, 9, "GABARE", RGB(8, 6, 20));   /* (Gabare: KAWA's tracker, Skiff's engines; their credits stay) */
+    g_text_l(233 - 96, 8, "GABARE", C_WHITE);
     g_text_sh(233 - g_text_w("Pocket Tracker"), 44, "Pocket Tracker", C_GOLD, T_BOLD);
-    g_text_sh(233 - g_text_w("by Omnipotard"), 60, "by Omnipotard", C_TXT, 0);
+    g_text_sh(233 - g_text_w("KAWA by Omnipotard"), 60, "KAWA by Omnipotard", C_TXT, 0);
+    {
+        const char *m = TR("+ MOTEURS DE SKIFF", "+ SKIFF'S ENGINES", "+ MOTORES DE SKIFF");
+        const char *j = TR("ET DE JIANT", "AND JIANT'S", "Y DE JIANT");   /* (Gabare: CORDE, ADD) */
+        g_text_sh(233 - g_text_w(m), 76, m, C_TXT, 0);
+        g_text_sh(233 - g_text_w(j), 92, j, C_TXT, 0);
+    }
     g_rrect(4, 224, 44, 14, C_REC);
     g_text(8, 224, "BETA", C_WHITE, T_CROP | T_BOLD);
     g_text_sh(236 - g_text_w("V" APP_VER), 226, "V" APP_VER, C_TXT, T_CROP);
@@ -2221,6 +2328,7 @@ static void draw_all(void)
     case PG_SEND: draw_send(); break;
     case PG_FILT: draw_filt(); break;
     case PG_FXSEQ: draw_fxseq(); break;
+    case PG_ARP: draw_arp(); break;
     case PG_HELP: draw_help(); break;
     }
     draw_first();
@@ -2377,6 +2485,17 @@ static void key_down(uint32_t k)
     key_trk[k] = (uint8_t)t;
     brush_note[t] = note;
     pv_ms[t] = 0;                               /* (the key has the voice now: no preview's end cuts it) */
+    if (arp_mode && IS_TONAL(t)) {              /* (Gabare) the arpeggiator plays it (and REC, while playing, writes */
+        if (arp_latch && !arp_keys)             /* what it plays); latched: a new chord replaces the last */
+            ev_push(EV_ARP_CLR, t, 0, 0, 0, 0);
+        arp_keys |= 1u << k;
+        ev_push(EV_ARP_ADD, t, note, vol, 0, 0);
+        if (sq_play || !rec || (page != PG_TRACK && page != PG_GRID && page != PG_SOUND && page != PG_ENV && page != PG_ARP))
+            return;
+        write_cell(ui_pat, cur_row, t, note, vol, fx, fxv, 1);   /* stopped: step entry, as without it */
+        cur_row = (uint8_t)((cur_row + prj.step) % plen());
+        return;
+    }
     ev_push(EV_ON, t, note, vol, fx, fxv);
     if (!rec || (page != PG_TRACK && page != PG_GRID && page != PG_SOUND && page != PG_ENV))
         return;
@@ -2423,6 +2542,11 @@ static void rows_shift(int32_t d, int all)      /* rows pushed down from the cur
 
 static void key_up(uint32_t k)
 {
+    if (arp_keys >> k & 1u) {                   /* (Gabare) out of the arpeggio (latched: it stays) */
+        arp_keys &= ~(1u << k);
+        if (!arp_latch) ev_push(EV_ARP_DEL, key_trk[k], key_note[k], 0, 0, 0);
+        return;
+    }
     ev_push(EV_OFF, key_trk[k], key_note[k], 0, 0, 0);
 }
 
@@ -2482,6 +2606,8 @@ static void param_turn(uint32_t t, uint32_t k, int32_t d)
     int32_t nv;
     if (!pd->name[0]) return;
     nv = clampi(prj.snd[t].p[k] + d, pd->lo, pd->hi);
+    if (k == P_FMPAT && pd->kind == K_NAMES)    /* (Gabare) in the knob's order: KAWA, the FM-1's original voices, the bank */
+        nv = fmpat_val(clampi(fmpat_pos(prj.snd[t].p[k]) + d, 0, (int32_t)(dx_ok ? FMPAT_N : FM_NPATCH + MV_N) - 1));
     if (nv == prj.snd[t].p[k]) return;
     undo_push_snd(t, 1);
     prj.snd[t].p[k] = (int8_t)nv;
@@ -2618,6 +2744,20 @@ static void knob(uint32_t i, int32_t d)
         if (i == 0u) mg_inten = (uint8_t)clampi(mg_inten + d, 0, 15);
         else if (i == 1u) mg_seed = (uint8_t)clampi(mg_seed + d, 0, 99);
         else if (i == 2u) mg_scope = (uint8_t)clampi(mg_scope + d, 0, 1);
+        break;
+    case PG_ARP:                                /* (Gabare) MODE, RATE, OCTAVES, GATE */
+        if (i == 0u) {
+            arp_mode = (uint8_t)clampi(arp_mode + d, 0, AM_N - 1);
+            if (arp_mode == AM_OFF) { ev_push(EV_ARP_CLR, 0, 0, 0, 0, 0); arp_keys = 0; }
+        } else {
+            if (i == 1u) arp_rate = (uint8_t)clampi(arp_rate + d, 0, AR_N - 1);
+            else if (i == 2u) arp_oct = (uint8_t)clampi(arp_oct + d, 1, 4);
+            else arp_gate = (uint8_t)clampi(arp_gate + d, 1, ARP_GATE_N);
+            set.arate = arp_rate;
+            set.aoct = arp_oct;
+            set.agate = arp_gate;
+            set_changed();
+        }
         break;
     case PG_SCALE:
         if (i == 0u) prj.root = (uint8_t)((prj.root + 12 + d % 12 + 12) % 12);
@@ -2904,7 +3044,7 @@ static void page_button(uint32_t p)             /* a page's button: open it, or 
     case PG_ENV: set_page(page == PG_ENV ? PG_MIX : PG_ENV); break;
     case PG_GRID: set_page(page == PG_GRID ? PG_TRACK : PG_GRID); break;
     case PG_MAGIC: set_page(page == PG_MAGIC ? PG_TRACK : PG_MAGIC); break;
-    case PG_SCALE: set_page(page == PG_SCALE ? PG_MAGIC : page == PG_MAGIC ? PG_TRACK : PG_SCALE); break;   /* SCL: SCALE, MAGIC */
+    case PG_SCALE: set_page(page == PG_SCALE ? PG_ARP : page == PG_ARP ? PG_MAGIC : page == PG_MAGIC ? PG_TRACK : PG_SCALE); break;   /* SCL: SCALE, (Gabare) ARPEGGIO, MAGIC */
     case PG_SONG: set_page(page == PG_SONG ? PG_GROOVE : page == PG_GROOVE ? PG_OPT : PG_SONG); break;
     default: set_page(p); break;
     }
@@ -2957,6 +3097,10 @@ static void button_down(uint32_t b)
             undo_push(ui_pat);
             memset(P()->live, 0, sizeof P()->live);
             toast(TR("LIVE EFFACE", "LIVE CLEARED", "LIVE BORRADO"));
+        } else if (page == PG_ARP) {            /* (Gabare) LATCH: the notes stay after the keys */
+            arp_latch ^= 1u;
+            if (!arp_latch) arp_relatch();
+            toast(arp_latch ? TR("NOTES TENUES", "LATCH ON", "NOTAS FIJAS") : TR("NOTES LIBRES", "LATCH OFF", "NOTAS LIBRES"));
         } else if (page == PG_SONG) {
             prj.mode ^= 1u;
             touched();
@@ -3202,7 +3346,7 @@ static void preset_commit(void)
 {
     uint32_t t = pre_cand_t;
     if (pre_cand == 0xFF || t >= NTRK) return;
-    if (PRESETS[pre_cand].engine == E_FM && !fm_free(t)) { toast(TR("FM: UNE SEULE PISTE", "FM: ONE TRACK ONLY", "FM: UNA SOLA PISTA")); pre_cand = 0xFF; return; }
+    if (!eng_free(t, PRESETS[pre_cand].engine)) { toast(eng_refusal(PRESETS[pre_cand].engine)); pre_cand = 0xFF; return; }
     preset_load(t, pre_cand, 1);
     pre_cand = 0xFF;
     toast(TR("CHARGE", "LOADED", "CARGADO"));
@@ -3216,9 +3360,10 @@ static void preset_turn(int32_t d)
         int32_t ne = (int32_t)PRESETS[from % NPRESET].engine + (d > 0 ? 1 : -1);
         uint32_t e;
         arp_turned = 1;
-        if (ne == E_FM && !fm_free(t)) ne += d > 0 ? 1 : -1;   /* FM: one track only */
+        while (ne >= 0 && ne < (int32_t)E_N && !eng_free(t, (uint32_t)ne))   /* FM: one track only; (Gabare) PHYS: four */
+            ne += d > 0 ? 1 : -1;
         e = (uint32_t)clampi(ne, 0, E_N - 1);
-        if (e == E_FM && !fm_free(t)) { toast(TR("FM: UNE SEULE PISTE", "FM: ONE TRACK ONLY", "FM: UNA SOLA PISTA")); return; }
+        if (!eng_free(t, e)) { toast(eng_refusal(e)); return; }
         if (e == PRESETS[from % NPRESET].engine) return;
         k = preset_first(e);
     } else {
@@ -3226,7 +3371,7 @@ static void preset_turn(int32_t d)
         k = from % NPRESET;
         do                                      /* the next factory sound (FM: only if no other track has it) */
             k = (uint32_t)(((int32_t)k + (d > 0 ? 1 : -1) + (int32_t)NPRESET) % (int32_t)NPRESET);
-        while (--guard && PRESETS[k].engine == E_FM && !fm_free(t));
+        while (--guard && !eng_free(t, PRESETS[k].engine));
     }
     if (!sound_is_preset(t)) {                  /* edited: only shown */
         if (!showing) toast(TR("OCT+: CHARGER", "OCT+: LOAD IT", "OCT+: CARGAR"));
@@ -3389,13 +3534,14 @@ static void ui_leds(void)
 {
     uint32_t i, k, t = trk();
     static const uint8_t PAGE_BTN[PG_N] = {BTN_HOME, BTN_SEQ, BTN_EDIT, BTN_ENV, BTN_ENV, BTN_SEL, BTN_SEL, BTN_GLO,
-                                           BTN_SAVE, BTN_GLO, BTN_FX, BTN_HOME, 255, BTN_GLO, BTN_FX, BTN_FX, BTN_FX};   /* (GROOVE, OPTIONS: GLO) */
+                                           BTN_SAVE, BTN_GLO, BTN_FX, BTN_HOME, 255, BTN_GLO, BTN_FX, BTN_FX, BTN_FX, BTN_SEL};   /* (GROOVE, OPTIONS: GLO) */
     for (i = 0; i < 41u; i++) led_want[i] = 0;
     for (i = 2; i < 12u; i++) led_want[i] = 1;   /* the page buttons glow, the one open is lit */
     if (page < PG_N && PAGE_BTN[page] < 14u) led(page == PG_SOUND && sg_lfo(t, snd_page) ? BTN_LFO : PAGE_BTN[page], 2);
     led(BTN_PLAY, sq_play ? 2u : 1u);
     if (dirty && page != PG_PROJ) led(BTN_SAVE, (fm1_ms / 500u) & 1u ? 2u : 1u);   /* unsaved changes: SAVE blinks */
     led(BTN_REC, rec ? ((fm1_ms / 300u) & 1u ? 2u : 1u) : 1u);
+    if (arp_latch && arp_mode) led(BTN_ARP, 2);   /* (Gabare) the arpeggio holds its notes */
     led(BTN_OCT_DOWN, oct_ofs < 0 ? 2u : 1u);
     led(BTN_OCT_UP, oct_ofs > 0 ? 2u : 1u);
     switch (page) {
@@ -3559,7 +3705,11 @@ static void app_init(void)
     set.font = FN_DOUCE;                        /* (what the settings of 0.2 and 0.4 leave as they are: font, metronome) */
     set.metro = 0;
     set.mvol = 1;
-    if ((settings_load(&set, sizeof set) == 0 || settings_load(&set, 5u) == 0 || settings_load(&set, 4u) == 0) &&
+    set.arate = AR_16;                          /* (Gabare: what KAWA's 7 bytes leave as they are) */
+    set.aoct = 1;
+    set.agate = 8;
+    if ((settings_load(&set, sizeof set) == 0 || settings_load(&set, 7u) == 0 || settings_load(&set, 5u) == 0 ||
+         settings_load(&set, 4u) == 0) &&
         set.lang < LANG_N && set.theme < NTHEME) {   /* (5 bytes: 0.4's, before the metronome; 4: 0.2's, before the font) */
         lang = set.lang;
         oct_ofs = (int8_t)clampi(set.oct, -3, 3);
@@ -3568,6 +3718,9 @@ static void app_init(void)
         if (set.clock > 2u) set.clock = 0;
         if (set.metro > 2u) set.metro = 0;
         if (set.mvol > 2u) set.mvol = 1;
+        arp_rate = set.arate < AR_N ? set.arate : AR_16;
+        arp_oct = set.aoct >= 1u && set.aoct <= 4u ? set.aoct : 1u;
+        arp_gate = set.agate >= 1u && set.agate <= ARP_GATE_N ? set.agate : 8u;
         clk_in = (uint8_t)(set.clock == 2u);
     } else {
         theme_set(0);
@@ -3625,6 +3778,8 @@ static void app_step(void)
     met_mode = set.metro;                       /* (the audio interrupt reads them) */
     met_vol = set.mvol;
     met_rec = rec;
+    arp_rec = (uint8_t)(rec && (page == PG_TRACK || page == PG_GRID || page == PG_SOUND || page == PG_ENV || page == PG_ARP));
+    arp_drain();                                /* (Gabare) */
     if (clk_in && sq_play && fm1_ticks() - ci_last > 1000000u * FM1_TICKS_PER_US &&   /* (a second) */
         fm1_ms - toast_ms > 2500u)              /* PLAY on the clock in, and no clock: it waits for it */
         toast(TR("ATTEND L'HORLOGE MIDI", "WAITING FOR MIDI CLOCK", "ESPERA EL RELOJ MIDI"));

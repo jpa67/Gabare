@@ -1,10 +1,129 @@
-# KAWA — Pocket Tracker by Omnipotard
+# Gabare — le tracker de KAWA, les moteurs de Skiff et de JIANT
 
-![KAWA, Pocket Tracker for the M-VAVE FM-1](manual/img/kawa-preview.png)
+![Gabare : l'écran de démarrage](docs/img/gabare/boot.png)
 
-**[▶ Ouvrir le site de KAWA](https://guizmoh.github.io/Kawa-Tracker-Fm1/)** — [Installer](https://guizmoh.github.io/Kawa-Tracker-Fm1/#install) · [Émulateur](https://guizmoh.github.io/Kawa-Tracker-Fm1/emulator/index.html) · [Manuel](https://guizmoh.github.io/Kawa-Tracker-Fm1/manual/fr.html) · [Samples](https://guizmoh.github.io/Kawa-Tracker-Fm1/samples.html)
+**[Installer Gabare](index.html)** · [Envoyer une banque DX7](dx7.html) · [Envoyer des samples](samples.html) · [Manuel de KAWA](manual/fr.html)
 
-[English](README.md) · **Français** · [Español](README.es.md)
+**Français** · [English](README.md) · [Español](README.es.md)
+
+Gabare est un firmware libre pour le **M-VAVE FM-1**. C'est [KAWA](https://github.com/Guizmoh/Kawa-Tracker-Fm1)
+d'Omnipotard (le tracker, ses six pistes, ses effets, ses outils, son installeur), auquel Gabare ajoute neuf moteurs de
+synthèse pris à deux firmwares de la famille Felucca, un arpégiateur au clavier et les banques DX7 sur la piste FM.
+Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare ajoute ; la suite est le
+texte de KAWA.
+
+> **État : 0.5, bêta.** La 0.1 à la 0.4 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
+> simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
+> et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB ; la 0.5 ajoute les 128
+> voix d'origine du FM-1 sur la piste FM. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
+
+| | | |
+| --- | --- | --- |
+| ![ANALOG](docs/img/gabare/son-analog.png) | ![PHYS](docs/img/gabare/son-phys.png) | ![CORDE](docs/img/gabare/son-corde.png) |
+| ![L'arpégiateur](docs/img/gabare/arpege.png) | ![Une voix DX7 sur la piste FM](docs/img/gabare/fm-dx7.png) | ![Le démarrage](docs/img/gabare/boot.png) |
+
+## Ce que Gabare ajoute
+
+### Quinze moteurs
+
+Chaque piste choisit son moteur sur la page SON (EDIT) : **ARP tenu + PRESETS** passe d'un moteur à l'autre (sur le
+premier son d'usine du moteur), **PRESETS** seul parcourt ses sons d'usine. La bande des moteurs en montre sept à la
+fois, autour du moteur choisi.
+
+| Moteur | D'où | Le son | Sons d'usine |
+| --- | --- | --- | --- |
+| CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE | KAWA | ceux de KAWA (voir son manuel) | ceux de KAWA |
+| ANALOG | Skiff | soustractif : deux oscillateurs, un filtre résonant | 25 |
+| PHASE | Skiff | distorsion de phase, à la Casio CZ | 9 |
+| LOFI | Skiff | ondes 8 bits, très léger | 8 |
+| VOIX | Skiff | formants : voyelles, chœurs | 8 |
+| TRIO | Skiff | trois oscillateurs | 9 |
+| ORGUE | Skiff | orgue à roues phoniques, ses tirettes | 8 |
+| PHYS | Skiff | modèles physiques : modal, corde, membrane, cordes sympathiques | 11 |
+| CORDE | JIANT | corde pincée, frappée ou frottée (Karplus-Strong), larsen de guitare | 16 |
+| ADD | JIANT | additif : neuf partiels (harmoniques, impairs, cloche, barre, membrane…) | 16 |
+
+- Les **8 boutons** d'un moteur de Skiff ou de JIANT sont ses réglages à lui, sur SON 1 et SON 2 (K1 à K4), sous
+  leur nom d'origine. La page SON dessine le moteur : son nom et ses 8 réglages en barres.
+- Tout le reste de KAWA s'applique autour d'eux : la note, le glissé, l'arpège, la table et le LFO font la hauteur ;
+  l'enveloppe, le volume, les effets et les envois suivent. **ENV>EFF** ouvre aussi le filtre du moteur.
+- Une note à la fois par piste, comme dans KAWA.
+- **FM** se joue sur une piste (la règle de KAWA) et **PHYS sur quatre au plus** : sur le FM-1, trois pistes PHYS
+  prennent 68 % du temps de calcul. Au-delà, PHYS est grisé dans la bande et l'écran dit « PHYS : 4 PISTES MAX ».
+  Les autres moteurs vont sur les six pistes (CORDE et ADD coûtent comme ANALOG).
+- **CORDE**, sons FEEDBACK, SHOEGAZE, SQUEAL et EBOW : leur excitation FDBK change le rôle des boutons 4 à 8 (MOVE,
+  GAIN, DIST, SPEAKR, BLOOM), mais l'écran garde les noms habituels. Une note qui s'arrête (OFF) étouffe la corde
+  selon le RELEASE de la piste.
+
+### L'arpégiateur
+
+**SCL** fait maintenant le tour **GAMME → ARPÈGE → MAGIE**. Sur la page ARPÈGE :
+
+| Bouton | Réglage |
+| --- | --- |
+| K1 | le mode : OFF, MONTE, DESCEND, MONTE+DESC, HASARD, COMME JOUÉ |
+| K2 | la vitesse : 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4 |
+| K3 | les octaves : 1 à 4 |
+| K4 | la durée de chaque note : de 6 % à 94 %, puis LEGATO |
+| ARP | tenir les notes : elles restent une fois les touches lâchées, le prochain accord les remplace |
+
+- Tiens des touches (jusqu'à 8) : elles s'arpègent sur la piste choisie, depuis n'importe quelle page qui joue des
+  notes. Les pistes KIT et les tranches de sample ne s'arpègent pas.
+- À l'arrêt, la première note part tout de suite, au tempo du morceau. Pendant la lecture, l'arpège suit les lignes
+  du séquenceur, swing et groove compris, et la piste arpégée ne joue pas ses propres notes pendant ce temps.
+- **REC pendant la lecture** : chaque note de l'arpège s'écrit dans la ligne qui joue, avec un RETARD si elle tombe
+  entre deux lignes. Une ligne garde une note : aux vitesses plus rapides que la ligne (1/32, 1/16T), seule la
+  première de chaque ligne s'écrit. À l'arrêt avec REC, une touche s'écrit au curseur, comme d'habitude.
+- La vitesse, les octaves et la durée sont gardées à l'extinction ; le mode revient à OFF au démarrage.
+
+### Les voix d'origine du FM-1 et les banques DX7
+
+Le moteur FM de KAWA est msfa, le cœur de Dexed : six opérateurs, les 32 algorithmes du DX7 et son format de voix.
+Sur la piste FM, page SON, **K1 (SON FM)** passe, sous leur nom :
+
+1. les 12 sons FM de KAWA ;
+2. **les 128 voix d'origine du FM-1** (celles du firmware M-VAVE V15 : PIANO 1, ORGAN 1, SYN LEAD 1…), toujours là ;
+3. les 32 voix de **ta banque DX7**, si tu en as envoyé une.
+
+Les réglages FM de KAWA (algorithme, rapport, feedback, désaccord, pages OPÉRATEUR et ENV OP) agissent sur toutes. Les
+voix d'origine sont jouées par le moteur de Gabare : proches de celles du firmware M-VAVE, pas identiques (son moteur
+n'est pas public, et les effets de chaque preset ne suivent pas). M-VAVE les publie sous licence Apache-2.0 dans
+[fm1_open](https://github.com/m-vave/fm1_open).
+
+La banque DX7 de 32 voix s'envoie depuis la page [dx7.html](dx7.html) (Chrome, Edge ou Opera, par USB) :
+
+- le fichier est l'envoi en bloc d'un DX7 (un `.syx` de 4104 octets) ; la page montre ses 32 voix avant l'envoi ;
+- une banque à la fois, gardée dans la flash (le dernier secteur de 4 Ko de la réserve, après les samples). Une
+  nouvelle remplace l'ancienne ; un projet garde la voix qu'il a prise ;
+- **Gabare ne contient aucun son de Yamaha** : tu apportes tes banques (les cartouches d'origine, celles de Dexed,
+  les collections en ligne, les tiennes).
+
+Pour un programme : les commandes SysEx 16, 17 et 18 l'envoient, la 19 la relit, 64 octets à la fois (0.4 ; `F0 7D 4B
+57 cmd pack7(args) F7`, comme les samples de KAWA). Elles sont décrites en tête de `source/firmware/src/kawa_sysex.c`.
+INFO répond aussi `GABARE`, le nombre de moteurs, et si une banque est là.
+
+### Le reste
+
+- L'écran de démarrage dit GABARE, puis KAWA by Omnipotard et les moteurs de Skiff et de JIANT.
+- L'identité du paquet est `FM-1_947` (celle de KAWA : `FM-1_957`).
+- Les projets, les samples et les réglages de KAWA se lisent tels quels.
+
+### Crédits de Gabare
+
+Les moteurs ANALOG, PHASE, LOFI, VOIX, TRIO, ORGUE et PHYS sont ceux de [Skiff](https://github.com/illuminus5/skiff)
+(illuminus5), copiés sans changement dans `source/firmware/src/skiff/`. CORDE et ADD sont ceux de
+[JIANT](https://github.com/juanjiant-bit/JIANT) (Juan Ignacio Antonucci), adaptés à une voix par piste. Tous viennent
+de [Felucca](https://github.com/hugelton/Felucca) (Leo Kuroshita, Hügelton Instruments), sous GPL-3.0. PHYS contient
+des modèles portés de DaisySP (Electrosmith, Emilie Gillet) et de Rings (Emilie Gillet), sous licence MIT. Le lien
+entre ces moteurs et KAWA est `source/firmware/src/kawa_sk.c` ; l'arpégiateur est `kawa_arp.c`. Les détails sont dans
+[LICENSING.md](LICENSING.md).
+
+---
+
+## KAWA
+
+*La suite est le texte de KAWA ; elle vaut pour Gabare.*
 
 KAWA est un firmware tracker pour le **M-VAVE FM-1**, fait avant tout pour la **chiptune et l'IDM** : ondes
 4 bits, carré et bruit comme les vieilles consoles, FM, breakbeats découpés en tranches, roulements et ratchets,

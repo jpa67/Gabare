@@ -427,14 +427,16 @@ int main(void)
     button_down(BTN_OCT_UP); button_up(BTN_OCT_UP);
     CHECK(!pat_linked(31), "9. refused on the last pattern");
 
-    /* 10. the buttons: SCL goes SCALE, MAGIC, back; the LED of LFO, the pages of the help */
+    /* 10. the buttons: SCL goes SCALE, (Gabare) ARPEGGIO, MAGIC, back; the LED of LFO, the pages of the help */
     fresh();
     tap(BTN_SEL);
     CHECK(page == PG_SCALE, "10. SCL: SCALE");
     tap(BTN_SEL);
-    CHECK(page == PG_MAGIC, "10. SCL again: MAGIC");
+    CHECK(page == PG_ARP, "10. SCL again: ARPEGGIO (Gabare)");
     tap(BTN_SEL);
-    CHECK(page == PG_TRACK, "10. SCL a third time: TRACKS");
+    CHECK(page == PG_MAGIC, "10. SCL a third time: MAGIC");
+    tap(BTN_SEL);
+    CHECK(page == PG_TRACK, "10. SCL a fourth time: TRACKS");
     /* 11. a 0.4 project (pads zero) and a damaged pad load safely */
     fresh();
     prj.pat[3].pad[0] = 0x77; prj.snd[2].sat = 200;

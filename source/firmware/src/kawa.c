@@ -23,7 +23,7 @@
  * Rules of the chip (docs/RULES.md): integers only, no 64-bit division, the audio interrupt short. */
 #define APP_NAME "KAWA"
 #ifndef FELUCCA_ID
-#define FELUCCA_ID "FM-1_957"                   /* KAWA's identity, also outside build.py (it passes the same) */
+#define FELUCCA_ID "FM-1_947"                   /* (Gabare's identity; KAWA's is FM-1_957) */
 #endif
 #if !defined(DINGHY_HOST) && !defined(KAWA_WASM)  /* (the host builds keep the store in memory) */
 #ifndef STORE_LO
@@ -35,12 +35,13 @@
 #include "kawa_tables.h"
 #include "kawa_breaks.h"
 #include "kawa_art.h"
-#include "kawa_photo.h"
 #include "kawa_fm.h"
+#include "kawa_mvave.h"                         /* (Gabare) the FM-1's 128 original voices (M-VAVE, Apache-2.0) */
 #include "kawa_kits.h"
 #include "kawa_fonts.h"
 #include "kawa_data.c"
 #include "kawa_core.c"
+#include "kawa_sk.c"                          /* (Fm1Studio) Skiff's engines on KAWA's tracks */
 #include "kawa_snd.c"
 #include "kawa_fx.c"
 #include "kawa_seq.c"

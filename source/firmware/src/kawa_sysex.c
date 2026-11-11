@@ -6,14 +6,23 @@
  *
  * Frames: F0 7D 4B 57 cmd pack7(args) F7 ("KW", 7D: the non-commercial id; pack7: the updater's bit stream,
  * ota.c: 7 bits at a time, the low ones first). Every reply: the same cmd, pack7(rc, ...). Commands:
- *   1 INFO                           -> rc, "KAWA", version (4 chars), slots, capacity (3 B LE)
+ *   1 INFO                           -> rc, "KAWA", version (4 chars), slots, capacity (3 B LE), (Gabare) "GABARE", engines
  *   2 BEGIN slot                     -> rc, slot         (stopped only: the sound holds while the flash is written)
  *   3 WRITE slot off(3 B LE) data    -> rc, slot, off    (off from 0, a multiple of 256, in order; data <= 256 B)
  *   4 END slot header(32 B)          -> rc, slot         (usr_hdr_t: magic, len, rate, name, crc)
  *   5 ERASE slot                     -> rc, slot
  *   6 LIST                           -> rc, then per slot: used, rate (2 B), len (3 B), name (12 B)
+ * (Gabare) a DX7 bank (kawa_edit.c DX_AT: the 4096 bytes of a 32-voice bulk dump), the same way, bank 0 only:
+ *  16 DX BEGIN 0                     -> rc, 0            (stopped only; the sector erased: no bank until END)
+ *  17 DX WRITE 0 off(3 B LE) data    -> rc, 0, off       (off a multiple of 256, in order, to 4096)
+ *  18 DX END 0 crc(4 B LE)           -> rc, 0            (the CRC-32 of the 4096 bytes; 7-bit bytes, a name)
+ *  19 DX READ 0 off(3 B LE)          -> rc, 0, off, 64 B (off a multiple of 64, below 4096; rc 5 and no data: no bank)
+ * INFO's last byte (Gabare): 1 a DX7 bank is there.
  * Codes: 0 ok, 1 bad arguments, 2 busy (playing), 3 flash, 4 CRC, 5 no session / out of order. */
-enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST };
+enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 16, KW_DXWRITE, KW_DXEND, KW_DXREAD };
+#define KW_DXCHUNK 64u                          /* (Gabare) DX READ: 69 bytes a reply, under kw_reply's 100 */
+#define KW_DXSLOT 0xDDu                         /* (Gabare) kw_slot while a DX7 bank comes */
+typedef char dx_fits_the_store[DX_AT + 0x1000u <= STORE_HI && (DX_AT & 0xFFFu) == 0u ? 1 : -1];
 enum { KW_OK, KW_EARGS, KW_EBUSY, KW_EFLASH, KW_ECRC, KW_ESTATE };
 #define USR_AT_SLOT(k) (USR_AT + (uint32_t)(k) * USR_SIZE)
 typedef char usr_fits_the_store[USR_AT_SLOT(NUSR) <= STORE_HI ? 1 : -1];
@@ -111,6 +120,7 @@ static void usr_boot(void)                      /* at start: the slots that hold
         usr_hdr[k] = h;
         usr_data[k] = kw_xip(USR_AT_SLOT(k) + USR_DATA);
     }
+    dx_ok = (uint8_t)dx_valid(kw_xip(DX_AT));   /* (Gabare) the DX7 bank */
 }
 
 /* ---- the session: one slot at a time; the sound holds from BEGIN to END (10 s without a frame: given up) */
@@ -166,7 +176,12 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         for (i = 0; i < 4u; i++) r[5 + i] = (uint8_t)V[i];
         r[9] = NUSR;
         r[10] = (uint8_t)USR_CAP; r[11] = (uint8_t)(USR_CAP >> 8); r[12] = (uint8_t)(USR_CAP >> 16);
-        kw_reply(cmd, r, 13);
+        /* (Gabare) after KAWA's fields, which its sample tools read (they stop there): "GABARE" and the number of
+         * engines, so a computer tells Gabare from KAWA */
+        r[13] = 'G'; r[14] = 'A'; r[15] = 'B'; r[16] = 'A'; r[17] = 'R'; r[18] = 'E';
+        r[19] = (uint8_t)E_N;
+        r[20] = dx_ok;                          /* (Gabare) a DX7 bank */
+        kw_reply(cmd, r, 21);
         return;
     }
     case KW_BEGIN:
@@ -239,6 +254,55 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         }
         kw_reply(cmd, r, 1 + NUSR * 18u);
         return;
+    case KW_DXBEGIN:                            /* (Gabare) the DX7 bank */
+        if (n != 1u || k != 0u) { r[0] = KW_EARGS; break; }
+        if (sq_play) { r[0] = KW_EBUSY; break; }
+        if (kw_slot != 0xFFu) kw_end_session();
+        dx_ok = 0;                              /* (nothing reads it from now on: FM SOUND shows KAWA's) */
+        kw_hold_wait();
+        audio_hold = 1;
+        kw_hold_wait();
+        if (kw_erase(DX_AT)) { r[0] = KW_EFLASH; kw_end_session(); break; }
+        kw_slot = KW_DXSLOT;
+        kw_next = 0;
+        break;
+    case KW_DXWRITE: {
+        uint32_t off = n >= 4u ? (uint32_t)a[1] | (uint32_t)a[2] << 8 | (uint32_t)a[3] << 16 : 0xFFFFFFFFu, len = n - 4u;
+        r[2] = n >= 4u ? a[1] : 0; r[3] = n >= 4u ? a[2] : 0; r[4] = n >= 4u ? a[3] : 0;
+        if (n < 5u || k != 0u || len > 256u || (off & 0xFFu) || off + len > DX_SIZE) { r[0] = KW_EARGS; kw_reply(cmd, r, 5); return; }
+        if (kw_slot != KW_DXSLOT) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
+        if (off + 256u == kw_next) { r[0] = kw_last_rc; kw_reply(cmd, r, 5); return; }   /* (its reply was lost) */
+        if (off != kw_next) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
+        if (kw_prog(DX_AT + off, a + 4, len)) r[0] = KW_EFLASH;
+        if (r[0] == KW_OK) kw_next = off + 256u;
+        kw_last_rc = r[0];
+        kw_reply(cmd, r, 5);
+        return;
+    }
+    case KW_DXEND: {
+        uint32_t crc = n == 5u ? (uint32_t)a[1] | (uint32_t)a[2] << 8 | (uint32_t)a[3] << 16 | (uint32_t)a[4] << 24 : 0u;
+        if (n != 5u || k != 0u) { r[0] = KW_EARGS; break; }
+        if (kw_slot != KW_DXSLOT) { r[0] = KW_ESTATE; break; }
+        if (kw_next < DX_SIZE || kw_crc(kw_xip(DX_AT), DX_SIZE) != crc || !dx_valid(kw_xip(DX_AT))) {
+            kw_erase(DX_AT);                    /* (a bank that did not arrive whole: none) */
+            r[0] = KW_ECRC;
+            kw_end_session();
+            break;
+        }
+        dx_ok = 1;
+        kw_end_session();
+        toast(TR("BANQUE DX7 RECUE !", "DX7 BANK IN !", "BANCO DX7 RECIBIDO !"));
+        break;
+    }
+    case KW_DXREAD: {                           /* (Gabare) the bank, back to the computer (a read: never busy) */
+        uint32_t off = n == 4u ? (uint32_t)a[1] | (uint32_t)a[2] << 8 | (uint32_t)a[3] << 16 : 0xFFFFFFFFu;
+        r[2] = n == 4u ? a[1] : 0; r[3] = n == 4u ? a[2] : 0; r[4] = n == 4u ? a[3] : 0;
+        if (n != 4u || k != 0u || off % KW_DXCHUNK || off >= DX_SIZE) { r[0] = KW_EARGS; kw_reply(cmd, r, 5); return; }
+        if (!dx_ok) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
+        memcpy(r + 5, kw_xip(DX_AT + off), KW_DXCHUNK);
+        kw_reply(cmd, r, 5 + KW_DXCHUNK);
+        return;
+    }
     default:
         r[0] = KW_EARGS;
         break;

@@ -10,11 +10,11 @@ static void sound_build(uint32_t t)             /* after any change of a track's
         fm_build(t);
 }
 
-static void fm_patch_load(uint32_t t)           /* FM SOUND: a factory patch into the project (its operators) */
+static int fm_patch_get(int32_t v, uint8_t *out);
+static void fm_patch_load(uint32_t t)           /* FM SOUND: a factory patch into the project (its operators); (Gabare) or a
+                                                 * voice of the DX7 bank (no bank: the patch stays as it is) */
 {
-    uint32_t k, n = (uint32_t)clampi(prj.snd[t].p[P_FMPAT], 0, FM_NPATCH - 1);
-    for (k = 0; k < 156u; k++)
-        prj.fmp[k] = FM_PATCH[n][k];
+    fm_patch_get(prj.snd[t].p[P_FMPAT], prj.fmp);
 }
 
 /* an FM operator's knob (OPERATOR, OP ENV): operator n (1..6) is the patch's 6 - n (msfa). The envelope is
@@ -54,6 +54,25 @@ static int fm_free(uint32_t t)                  /* track t may play FM: no other
     uint32_t f = fm_track();
     return f == NTRK || f == t;
 }
+/* (Gabare) track t may play engine e: FM on one track (KAWA's rule), PHYS on PHYS_MAX tracks at most (measured on the
+ * FM-1: three PHYS tracks take ~68 % of the audio time; six would not fit), the others anywhere */
+#define PHYS_MAX 4u
+static int eng_free(uint32_t t, uint32_t e)
+{
+    uint32_t k, n = 0;
+    if (e == E_FM)
+        return fm_free(t);
+    if (e != E_PHYS)
+        return 1;
+    for (k = 0; k < NTRK; k++)
+        n += k != t && prj.snd[k].engine == E_PHYS;
+    return n < PHYS_MAX;
+}
+static const char *eng_refusal(uint32_t e)      /* what the screen says when it refuses */
+{
+    return e == E_FM ? TR("FM: UNE SEULE PISTE", "FM: ONE TRACK ONLY", "FM: UNA SOLA PISTA")
+                     : TR("PHYS: 4 PISTES MAX", "PHYS: 4 TRACKS MAX", "PHYS: 4 PISTAS MAX");
+}
 
 static void sound_mix_default(uint32_t t)
 {
@@ -85,6 +104,8 @@ static void sound_preset(uint32_t t, uint32_t k)   /* a factory sound: SOUND and
         prj.snd[t].p[P_S0 + i] = pr->s[i];
     for (i = 0; i < 4u; i++)
         prj.snd[t].p[P_ATT + i] = pr->env[i];
+    if (is_sk(pr->engine))                      /* (Fm1Studio) Skiff's ENV -> FILTER: ENV>EFF opens its filter (kawa_sk.c) */
+        prj.snd[t].p[P_MENVA] = (int8_t)clampi(pr->fenv / 4, -15, 15);
     if (pr->engine == E_FM)
         fm_patch_load(t);
     sound_build(t);
@@ -101,10 +122,14 @@ static int sound_is_preset(uint32_t t)          /* the sound is still its preset
     for (i = 0; i < 4u; i++)
         if (prj.snd[t].p[P_ATT + i] != pr->env[i])
             return 0;
-    if (pr->engine == E_FM)                     /* FM: its operators too (OPERATOR, OP ENV) */
+    if (pr->engine == E_FM) {                   /* FM: its operators too (OPERATOR, OP ENV) */
+        uint8_t ref[156];
+        if (!fm_patch_get(prj.snd[t].p[P_FMPAT], ref))
+            return 0;
         for (i = 0; i < 156u; i++)
-            if (prj.fmp[i] != FM_PATCH[clampi(prj.snd[t].p[P_FMPAT], 0, FM_NPATCH - 1)][i])
+            if (prj.fmp[i] != ref[i])
                 return 0;
+    }
     return 1;
 }
 static uint32_t preset_first(uint32_t e)        /* the first factory sound of an engine */
@@ -473,7 +498,7 @@ static int hist_pop(hist_t *h, hist_t *other)
     if (p & H_SND) {
         uint32_t t = p & 7u;
         const snap_t *s = &h->slot[h->top].s;
-        if (t >= NTRK || (s->snd.engine == E_FM && !fm_free(t))) {
+        if (t >= NTRK || !eng_free(t, s->snd.engine)) {
             h->top = (uint8_t)((h->top + 1u) % NUNDO);   /* (it stays where it was) */
             h->n++;
             return -2;
@@ -930,6 +955,107 @@ static const char *magic_run(uint32_t tool, uint32_t pi, uint32_t t, uint32_t sc
 #define NSLOT 4u
 #define USR_AT (STORE_LO + NSLOT * SLOT_SIZE)
 typedef char prj_fits_a_slot[sizeof(project_t) <= SLOT_SIZE ? 1 : -1];
+
+/* ---- (Gabare) a DX7 bank: the 4096 bytes of a DX7's 32-voice bulk dump (VMEM: 32 packed voices of 128 bytes), in the
+ * sector after the user's samples (DX_AT, the store's last 4 KiB). A computer sends it (kawa_sysex.c KW_DX_*, the page
+ * dx7.html): any bank the user has. Its voices come last on FM SOUND (after KAWA's and the FM-1's original ones), unpacked into the
+ * 155-byte voice the FM engine plays (msfa's, Dexed's), as a DX7 does it; the project keeps the voice it took. */
+#define DX_AT (USR_AT + NUSR * USR_SIZE)
+#define DX_SIZE 4096u
+static const uint8_t *kw_xip(uint32_t off);
+static int dx_valid(const uint8_t *b)           /* 7-bit bytes everywhere (an erased sector is 0xFF), a name */
+{
+    uint32_t i;
+    for (i = 0; i < DX_SIZE; i++)
+        if (b[i] & 0x80u)
+            return 0;
+    return b[118] >= 0x20u;
+}
+static const uint8_t *dx_voice(uint32_t k) { return dx_ok && k < DX_NV ? kw_xip(DX_AT + k * 128u) : 0; }
+static const char *dx_name(uint32_t k)
+{
+    static char s[11];
+    const uint8_t *v = dx_voice(k);
+    uint32_t i, n = 0;
+    if (!v)
+        return "-";
+    for (i = 0; i < 10u; i++) {
+        uint8_t c = v[118u + i];
+        s[i] = (char)(c >= 0x20u && c < 0x7Fu ? c : ' ');
+        if (s[i] != ' ') n = i + 1u;
+    }
+    s[n] = 0;
+    return n ? s : "DX7";
+}
+static uint8_t dx_lim(uint32_t v, uint32_t max) { return (uint8_t)(v > max ? max : v); }
+static void dx_unpack(const uint8_t *b, uint8_t *v)   /* a packed voice (128) -> the 155-byte voice (+ 0), DX7's ranges */
+{
+    uint32_t op, i;
+    for (op = 0; op < 6u; op++) {               /* (both list OP6 first) */
+        const uint8_t *p = b + op * 17u;
+        uint8_t *o = v + op * 21u;
+        for (i = 0; i < 4u; i++) {
+            o[i] = dx_lim(p[i], 99);            /* R1..R4 */
+            o[4u + i] = dx_lim(p[4u + i], 99);  /* L1..L4 */
+        }
+        o[8] = dx_lim(p[8], 99);                /* BREAK POINT, LEFT DEPTH, RIGHT DEPTH */
+        o[9] = dx_lim(p[9], 99);
+        o[10] = dx_lim(p[10], 99);
+        o[11] = (uint8_t)(p[11] & 3u);          /* LEFT CURVE, RIGHT CURVE */
+        o[12] = (uint8_t)((p[11] >> 2) & 3u);
+        o[13] = (uint8_t)(p[12] & 7u);          /* RATE SCALING */
+        o[14] = (uint8_t)(p[13] & 3u);          /* AMS, KEY VELOCITY */
+        o[15] = (uint8_t)((p[13] >> 2) & 7u);
+        o[16] = dx_lim(p[14], 99);              /* OUTPUT LEVEL */
+        o[17] = (uint8_t)(p[15] & 1u);          /* MODE, FREQ COARSE, FREQ FINE */
+        o[18] = (uint8_t)((p[15] >> 1) & 31u);
+        o[19] = dx_lim(p[16], 99);
+        o[20] = dx_lim((uint32_t)(p[12] >> 3) & 15u, 14);   /* DETUNE */
+    }
+    for (i = 0; i < 8u; i++)
+        v[126u + i] = dx_lim(b[102u + i], 99);  /* PITCH EG R1..R4, L1..L4 */
+    v[134] = (uint8_t)(b[110] & 31u);           /* ALGORITHM */
+    v[135] = (uint8_t)(b[111] & 7u);            /* FEEDBACK, OSC KEY SYNC */
+    v[136] = (uint8_t)((b[111] >> 3) & 1u);
+    for (i = 0; i < 4u; i++)
+        v[137u + i] = dx_lim(b[112u + i], 99);  /* LFO SPEED, DELAY, PMD, AMD */
+    v[141] = (uint8_t)(b[116] & 1u);            /* LFO SYNC, WAVE, PMS */
+    v[142] = dx_lim((uint32_t)(b[116] >> 1) & 7u, 5);
+    v[143] = (uint8_t)((b[116] >> 4) & 7u);
+    v[144] = dx_lim(b[117], 48);                /* TRANSPOSE */
+    for (i = 0; i < 10u; i++)
+        v[145u + i] = (uint8_t)(b[118u + i] & 0x7Fu);
+    v[155] = 0;
+}
+static const char *mv_name(uint32_t k)          /* (Gabare) the FM-1's original voice k's name */
+{
+    static char s[11];
+    uint32_t i, n = 0;
+    for (i = 0; i < 10u && k < MV_N; i++) {
+        uint8_t c = MV_VOICE[k][118u + i];
+        s[i] = (char)(c >= 0x20u && c < 0x7Fu ? c : ' ');
+        if (s[i] != ' ') n = i + 1u;
+    }
+    s[n] = 0;
+    return n ? s : "M-VAVE";
+}
+static int fm_patch_get(int32_t v, uint8_t *out)   /* FM SOUND v's 156 bytes: KAWA's, the FM-1's original, the bank's (0: none) */
+{
+    uint32_t k;
+    if (v < 0) {                                /* (Gabare) -128..-1: the FM-1's original voices 1..128 */
+        dx_unpack(MV_VOICE[clampi(v + 128, 0, (int32_t)MV_N - 1)], out);
+        return 1;
+    }
+    if ((uint32_t)v < FM_NPATCH) {
+        for (k = 0; k < 156u; k++)
+            out[k] = FM_PATCH[v][k];
+        return 1;
+    }
+    if (!dx_voice((uint32_t)v - FM_NPATCH))
+        return 0;
+    dx_unpack(dx_voice((uint32_t)v - FM_NPATCH), out);
+    return 1;
+}
 #define V4_CELL 4u                              /* format 4 (KAWA 0.2): cells of 4 bytes, no tables, no groove */
 #define V4_PAT (NROW * NTRK * V4_CELL + NROW + 4u)
 static uint32_t prj_body(uint32_t ver)          /* the bytes the CRC covers (the CRC follows them) */

@@ -108,6 +108,8 @@ static void seq_play_cell(uint32_t t, uint32_t note, uint32_t vol, const tricks_
     voice_on(t, note, vol, k, g_rowlen / 6u);
 }
 
+#include "kawa_arp.c"                           /* (Gabare) the arpeggiator */
+
 static void seq_row_start(void)
 {
     const pat_t *pt = &prj.pat[s_pat];
@@ -145,8 +147,8 @@ static void seq_row_start(void)
             }
             continue;
         }
-        if (sup)                                /* played live a moment ago: do not play it twice */
-            continue;
+        if (sup || arp_owns(t))                 /* played live a moment ago: do not play it twice; (Gabare) the */
+            continue;                           /* arpeggiator plays this track */
         if (trick(&k, FX_CHANCE, &v) && (xr(&rnd_isr) >> 8) % 10u >= (uint32_t)clampi(v, 0, 9))
             continue;
         if (trick(&k, FX_DELAY, &v)) {
@@ -388,8 +390,11 @@ static void app_audio(int32_t *out, uint32_t n)
         else if (e->type == EV_OFF) {
             if (e->trk < NTRK && tk[e->trk].note == e->note && note_mode(e->trk) == NM_NOTE)
                 voice_off(e->trk);
-        } else if (e->type == EV_ALLOFF)
+        } else if (e->type == EV_ALLOFF) {
             voices_silence();
+            arp_event(EV_ARP_CLR, 0, 0, 0);     /* (Gabare) */
+        } else if (e->type >= EV_ARP_ADD && e->type <= EV_ARP_CLR)
+            arp_event(e->type, e->trk, e->note, e->vol);
         else if (e->type == EV_KILL)
             voice_kill(e->trk);
         evq_r++;
@@ -439,6 +444,7 @@ static void app_audio(int32_t *out, uint32_t n)
             seq_chunk();
         else
             g_beatpos = (g_beatpos + CHUNK) % (g_rowlen * 4u);
+        arp_chunk();                            /* (Gabare) */
         for (t = 0; t < NTRK; t++)              /* the tables step on */
             tb_chunk(t);
         for (i = 0; i < CHUNK; i++)

@@ -7,7 +7,7 @@ echo  1. Switch the FM-1 on, plug it in with a USB DATA cable, close every other
 echo  2. Unplug nothing until the installer says it is done.
 echo.
 set "PKG="
-for %%f in (install\kawa-*.fwsc) do set "PKG=%%f"
+for %%f in (install\gabare-*.fwsc) do set "PKG=%%f"
 if not defined PKG (
   echo No firmware in the install folder.
   goto end
