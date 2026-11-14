@@ -166,7 +166,7 @@ static void fx_text(uint32_t t, uint32_t fx, uint32_t fxv, char *s)   /* a trick
     s[0] = 0;
     switch (fx) {
     case FX_NONE: case FX_END: break;
-    case FX_ARP: str_cat(s, CHORDS[fxv % 14u].name[lang]); break;
+    case FX_ARP: case FX_CHORD: str_cat(s, CHORDS[fxv % 14u].name[lang]); break;
     case FX_ROLL: *s++ = 'X'; fmt_u(s, ROLL_N[fxv < 9u ? fxv : 8u], 0); break;
     case FX_BEND: case FX_PITCH: case FX_VSL: case FX_PAN: fmt_s(s, v); break;
     case FX_CHANCE: s = fmt_u(s, fxv * 10u, 0); str_cat(s, "%"); break;

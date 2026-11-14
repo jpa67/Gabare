@@ -12,10 +12,11 @@ synthèse pris à deux firmwares de la famille Felucca, un arpégiateur au clavi
 Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare ajoute ; la suite est le
 texte de KAWA.
 
-> **État : 0.5, bêta.** La 0.1 à la 0.4 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
+> **État : 0.6, bêta.** La 0.1 à la 0.5 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
 > simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
-> et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB ; la 0.5 ajoute les 128
-> voix d'origine du FM-1 sur la piste FM. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB, la 0.5 ajoute les 128
+> voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste) : sa charge sur le FM-1 reste
+> à mesurer. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
 > avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
 
 | | | |
@@ -76,6 +77,57 @@ fois, autour du moteur choisi.
   entre deux lignes. Une ligne garde une note : aux vitesses plus rapides que la ligne (1/32, 1/16T), seule la
   première de chaque ligne s'écrit. À l'arrêt avec REC, une touche s'écrit au curseur, comme d'habitude.
 - La vitesse, les octaves et la durée sont gardées à l'extinction ; le mode revient à OFF au démarrage.
+
+### Les accords : l'effet ACC
+
+Un tracker joue une note par piste. Avec l'effet **ACC** (accord) dans une case, la note joue un accord : ses notes
+partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (des accords « paraphoniques »).
+
+- Sur la page PISTES, K3 choisit l'effet de la case (ACC, juste avant `---`), K4 l'accord : les 14 de l'effet ARP (MAJ,
+  MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS), jusqu'à 4 notes. Dans la case, ACC a l'icône ∞ ;
+  ARP garde la sienne et joue les mêmes accords note après note.
+- L'accord tient jusqu'à la note suivante de la piste, ou un OFF. ACC et ARP vont ensemble : l'arpège déplace l'accord.
+- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), ANALOG, PHASE, LOFI,
+  TRIO. Les autres jouent la note seule : BRUIT, KIT, SAMPLE, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
+  mémoire est celle d'une seule voix).
+- **La charge** : chaque note de plus coûte presque une piste de ce moteur (estimé : ~2 % pour CARRÉ ou LOFI, ~5 % pour
+  ANALOG, ~6 % pour FM, par note, à mesurer sur le FM-1 dans OPTIONS). Quand le FM-1 sature, le régulateur de KAWA
+  enlève d'abord les notes ajoutées par les accords.
+- Les projets ne changent pas de format ; un firmware d'avant la 0.6 ignore l'effet.
+
+### Les accords : l'effet ACC
+
+Un tracker joue une note par piste. Avec l'effet **ACC** (accord) dans une case, la note joue un accord : ses notes
+partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (des accords « paraphoniques »).
+
+- Sur la page PISTES, K3 choisit l'effet de la case (ACC, juste avant `---`), K4 l'accord : les 14 de l'effet ARP (MAJ,
+  MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS), jusqu'à 4 notes. Dans la case, ACC a l'icône ∞ ;
+  ARP garde la sienne et joue les mêmes accords note après note.
+- L'accord tient jusqu'à la note suivante de la piste, ou un OFF. ACC et ARP vont ensemble : l'arpège déplace l'accord.
+- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), ANALOG, PHASE, LOFI,
+  TRIO. Les autres jouent la note seule : BRUIT, KIT, SAMPLE, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
+  mémoire est celle d'une seule voix).
+- **La charge** : chaque note de plus coûte presque une piste de ce moteur (estimé : ~2 % pour CARRÉ ou LOFI, ~5 % pour
+  ANALOG, ~6 % pour FM, par note, à mesurer sur le FM-1 dans OPTIONS). Quand le FM-1 sature, le régulateur de KAWA
+  enlève d'abord les notes ajoutées par les accords.
+- Les projets ne changent pas de format ; un firmware d'avant la 0.6 ignore l'effet.
+
+### Les accords : l'effet ACC
+
+Un tracker joue une note par piste. Avec l'effet **ACC** (accord) dans une case, la note joue un accord : ses notes
+partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (des accords « paraphoniques »).
+
+- Sur la page PISTES, K3 choisit l'effet de la case (ACC, juste avant `---`), K4 l'accord : les 14 de l'effet ARP (MAJ,
+  MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS), jusqu'à 4 notes. Dans la case, ACC a l'icône ∞ ;
+  ARP garde la sienne et joue les mêmes accords note après note.
+- L'accord tient jusqu'à la note suivante de la piste, ou un OFF. ACC et ARP vont ensemble : l'arpège déplace l'accord.
+- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), ANALOG, PHASE, LOFI,
+  TRIO. Les autres jouent la note seule : BRUIT, KIT, SAMPLE, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
+  mémoire est celle d'une seule voix).
+- **La charge** : chaque note de plus coûte presque une piste de ce moteur (estimé : ~2 % pour CARRÉ ou LOFI, ~5 % pour
+  ANALOG, ~6 % pour FM, par note, à mesurer sur le FM-1 dans OPTIONS). Quand le FM-1 sature, le régulateur de KAWA
+  enlève d'abord les notes ajoutées par les accords.
+- Les projets ne changent pas de format ; un firmware d'avant la 0.6 ignore l'effet.
 
 ### Les voix d'origine du FM-1 et les banques DX7
 

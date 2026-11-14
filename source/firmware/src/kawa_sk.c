@@ -11,7 +11,8 @@
  * LFO make the pitch; the envelope, the volume, the effect and the sends follow the engine. The engine only makes the
  * raw sound, as KAWA's own oscillators do (track_chunk). Its 8 knobs are the sound's SOUND 1-2 (P_S0..P_S7 -> Skiff's
  * P_E0..P_E7, the same 0..127). ENV>EFF (P_MENVA) also opens the engine's own filter, as Skiff's ENV -> FILTER does.
- * One voice a track (NVOICE 1): KAWA's tracks play one note at a time, and a new note restarts the engine's voice. */
+ * One voice a track: KAWA's tracks play one note at a time, and a new note restarts the engine's voice; (Gabare 0.6) the
+ * light engines (ANALOG, PHASE, LOFI, TRIO) play an ACC chord's notes on voices 1..3 too, the others v[0] only. */
 
 /* ---- Skiff's code, its names kept apart from KAWA's */
 #pragma push_macro("FS")                       /* (Skiff's tables define their own FS and CTL: KAWA's come back after) */
@@ -23,7 +24,7 @@
 #define pitch_inc sk_pitch_inc
 #define preset_t sk_preset_t
 #define SINE SK_SINE
-#define NVOICE 1u
+#define NVOICE 4u                              /* (Gabare) CHORD_MAX: an ACC chord's notes (the light engines only) */
 #include "kawa_sk_names.h"                      /* Skiff's names KAWA also has */
 #include "skiff/sk_core.h"
 #include "skiff/skiff_tables.h"
@@ -51,11 +52,12 @@ static uint32_t sk_rng(void)
 #include "skiff/eng_phys.c"
 #include "skiff/eng_string.c"                  /* (Gabare) JIANT's STRING and ADD (ADD after WHEEL and STRING: their code) */
 #include "skiff/eng_add.c"
-/* a track's engine memory: the biggest engine's (PHYS: one model slot, the only voice's) */
+/* a track's engine memory: the biggest engine's (PHYS: one model slot, the only voice's). The engines with memory of
+ * their own play v[0] only (no chord): one voice's */
 typedef union {
     phys_slot_t phys[1];
-    drw_vc_t wheel[NVOICE];                     /* (WHEEL's, ADD's) */
-    int16_t string[ST_SL * NVOICE];             /* (STRING's line) */
+    drw_vc_t wheel[1];                          /* (WHEEL's, ADD's) */
+    int16_t string[ST_SL];                      /* (STRING's line) */
 } sk_mem_t;
 #undef clamp
 #undef blep
@@ -84,6 +86,11 @@ typedef char sk_engines_listed[E_N - E_SK0 == SK_N ? 1 : -1];
  * their factory sounds), brought up to them */
 static const uint8_t SK_GAIN[] = {11, 11, 11, 11, 11, 11, 11, 33, 22};
 typedef char sk_gains_listed[NELEM(SK_GAIN) == SK_N ? 1 : -1];
+/* (Gabare) the engines that play an ACC chord (one voice a note): ANALOG, PHASE, LOFI, TRIO; not VOICE (too heavy), nor
+ * the ones with memory of their own (WHEEL, PHYS, STRING, ADD) */
+static const uint8_t SK_CHORD[] = {1, 1, 1, 0, 1, 0, 0, 0, 0};
+typedef char sk_chords_listed[NELEM(SK_CHORD) == SK_N && CHORD_MAX <= NELEM(sk_trk[0].v) ? 1 : -1];
+static uint8_t sk_nv[NTRK];                     /* the voices the last note started */
 
 #define SK_BLOCK 32u
 typedef char sk_two_chunks[SK_BLOCK == 2u * CHUNK ? 1 : -1];
@@ -107,48 +114,63 @@ static void sk_knobs(uint32_t t)
     sk_trk[t].p[SK_P_REL] = (int16_t)(prj.snd[t].p[P_REL] * 8 + 7);
 }
 
-/* a new note: the engine's voice starts again (its phases, its filter: Skiff's note_on) */
-static void sk_note_on(uint32_t t, uint32_t note, uint32_t vol)
+/* a new note: the engine's voice starts again (its phases, its filter: Skiff's note_on); (Gabare) an ACC chord of nch
+ * notes (off: their semitones over the note, off[0] 0): one voice each on the light engines */
+static void sk_note_on(uint32_t t, uint32_t note, uint32_t vol, uint32_t nch, const int8_t *off)
 {
     track_t *k = &sk_trk[t];
-    voice_t *v = &k->v[0];
-    uint32_t e = prj.snd[t].engine;
+    uint32_t e = prj.snd[t].engine, j;
+    uint32_t nv = SK_CHORD[(e - E_SK0) % SK_N] && nch > 1u ? (nch < CHORD_MAX ? nch : CHORD_MAX) : 1u;
     if (sk_eng[t] != e) {                       /* another engine: its memory from zero, as Skiff's engine switch */
         memset(&sk_mem[t], 0, sizeof sk_mem[t]);
-        memset(v, 0, sizeof *v);
+        memset(k->v, 0, sizeof k->v);
         sk_eng[t] = (uint8_t)e;
     }
     sk_knobs(t);
     sk_pos[t] = 0;                              /* (a new block from the note's start) */
-    v->note = (uint8_t)note;
-    v->vel = (uint8_t)(vol * 8u + 7u);
-    v->gate = 1;
-    v->active = 1;
-    v->stage = 1;
-    v->age = ++sk_age;
-    v->pitch16 = v->pitch_cur = (int32_t)note << 4;
-    if (sk_engine(e)->note_on)
-        sk_engine(e)->note_on(k, v);
+    for (j = 0; j < NELEM(k->v); j++) {
+        voice_t *v = &k->v[j];
+        int32_t n = (int32_t)note + (j ? off[j] : 0);
+        if (j >= nv) {                          /* (a last chord's voice: silent) */
+            v->gate = 0;
+            v->active = 0;
+            continue;
+        }
+        n = n < 0 ? 0 : n > 127 ? 127 : n;
+        v->note = (uint8_t)n;
+        v->vel = (uint8_t)(vol * 8u + 7u);
+        v->gate = 1;
+        v->active = 1;
+        v->stage = 1;
+        v->age = ++sk_age;
+        v->pitch16 = v->pitch_cur = n << 4;
+        if (sk_engine(e)->note_on)
+            sk_engine(e)->note_on(k, v);
+    }
+    sk_nv[t] = (uint8_t)nv;
 }
 
 /* the key is let go (the engines that hold their own sound to it: WHEEL's percussion, PHYS's bow) */
 static void sk_note_off(uint32_t t)
 {
-    sk_trk[t].v[0].gate = 0;
-    sk_trk[t].v[0].stage = 3;
+    uint32_t j;
+    for (j = 0; j < NELEM(sk_trk[t].v); j++) {
+        sk_trk[t].v[j].gate = 0;
+        sk_trk[t].v[j].stage = 3;
+    }
 }
 
 /* a chunk of the raw sound (added to raw[], silent otherwise): pit, the pitch as KAWA made it (Q8 semitones); env,
  * KAWA's envelope (Q16), for ENV>EFF on the engine's filter. Skiff's engines run in blocks of SK_BLOCK (its CTL, 32):
  * one is rendered every other chunk, as KAWA's FM does, and played in two halves */
-static void sk_chunk(uint32_t t, int32_t *raw, int32_t pit, int32_t env)
+static void sk_chunk(uint32_t t, int32_t *raw, int32_t pit, int32_t env, uint32_t nch, const int8_t *off)
 {
     const int8_t *p = prj.snd[t].p;
     track_t *k = &sk_trk[t];
     const engine_t *eng = sk_engine(prj.snd[t].engine);
     vmod_t m;
-    int32_t *buf = sk_buf[t], p16 = pit >> 4;
-    uint32_t i;
+    int32_t *buf = sk_buf[t], p16 = pit >> 4, g;
+    uint32_t i, j, nv = nch > 1u ? (nch < sk_nv[t] ? nch : sk_nv[t]) : 1u;   /* (the governor: nch 0, the note alone) */
     if (sk_eng[t] != prj.snd[t].engine)         /* (no note yet on this engine) */
         return;
     if (sk_pos[t]) {                            /* the second half of the block */
@@ -159,23 +181,28 @@ static void sk_chunk(uint32_t t, int32_t *raw, int32_t pit, int32_t env)
     }
     sk_pos[t] = 1;
     sk_knobs(t);                                /* (the knobs move while the note plays) */
-    m.pitch16 = p16 < 0 ? 0 : p16 > 2047 ? 2047 : p16;
-    m.fine = (pit & 15) * 256;                  /* the residual below 1/16 semitone, in 1/4096 */
-    m.inc = sk_pitch_inc((uint32_t)m.pitch16);
-    m.inc += (uint32_t)((int32_t)(m.inc >> 12) * m.fine);
     m.amp0 = m.amp1 = 32767;                    /* KAWA's envelope and volume come after */
     m.envq15 = env >> 1;
     m.cutoff = ((env >> 1) * (p[P_MENVA] * 4)) >> 7;   /* as Skiff's ENV -> FILTER (-64..63): ENV>EFF x 4 */
     m.shape = 64 << 8;
-    k->v[0].pitch16 = m.pitch16;
-    k->v[0].env_out = 32767;
     if (eng->block)
         eng->block(k);
     for (i = 0; i < SK_BLOCK; i++)
         buf[i] = 0;
-    eng->render(k, &k->v[0], buf, SK_BLOCK, &m);
+    for (j = 0; j < nv; j++) {                  /* (Gabare) each note of an ACC chord on its voice, at its pitch */
+        int32_t pj = pit + (j ? off[j] * 256 : 0);
+        p16 = pj >> 4;
+        m.pitch16 = p16 < 0 ? 0 : p16 > 2047 ? 2047 : p16;
+        m.fine = (pj & 15) * 256;               /* the residual below 1/16 semitone, in 1/4096 */
+        m.inc = sk_pitch_inc((uint32_t)m.pitch16);
+        m.inc += (uint32_t)((int32_t)(m.inc >> 12) * m.fine);
+        k->v[j].pitch16 = m.pitch16;
+        k->v[j].env_out = 32767;
+        eng->render(k, &k->v[j], buf, SK_BLOCK, &m);
+    }
+    g = (SK_GAIN[(prj.snd[t].engine - E_SK0) % SK_N] * CHORD_GAIN[nv - 1u]) >> 4;   /* (Q15) */
     for (i = 0; i < SK_BLOCK; i++)              /* a voice at full scale is 24000 in Skiff; KAWA's oscillators ~16000 */
-        buf[i] = (buf[i] * SK_GAIN[(prj.snd[t].engine - E_SK0) % SK_N]) >> 4;
+        buf[i] = (int32_t)(((int64_t)buf[i] * g) >> 15);
     for (i = 0; i < CHUNK; i++)
         raw[i] += buf[i];
 }

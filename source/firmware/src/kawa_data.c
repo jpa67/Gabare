@@ -505,7 +505,8 @@ static void keys_init(void)
 
 /* ---- the cell tricks (FX column): a type and a value */
 enum { FX_NONE, FX_ARP, FX_GLIDE, FX_VIB, FX_ROLL, FX_BEND, FX_CHANCE, FX_DELAY, FX_CUT, FX_REV, FX_PITCH, FX_SHAPE,
-       FX_CRUSH, FX_VSL, FX_PAN, FX_OFS, FX_HOP, FX_END, FX_N };   /* (HOP and END: the sequencer's, format 5) */
+       FX_CRUSH, FX_VSL, FX_PAN, FX_OFS, FX_HOP, FX_END, FX_CHORD, FX_N };   /* (HOP and END: the sequencer's, format 5;
+                                                                                * (Gabare) CHORD: ACC, 0.6) */
 typedef struct {
     const char *tag[LANG_N];                    /* three letters */
     uint8_t icon;
@@ -530,6 +531,7 @@ static const fxdesc_t FXD[FX_N] = {
     {{"DEP", "OFS", "INI"}, ICO_RIGHT, 0, 15, 8},           /* SAMPLE: start further in (n / 16 of the slice; depart, inicio) */
     {{"SAU", "HOP", "SAL"}, ICO_LOOP, 0, 31, 0},            /* after this row, row n + 1 (saut, salto) */
     {{"FIN", "END", "FIN"}, ICO_STOP, 0, 0, 0},             /* the pattern ends after this row */
+    {{"ACC", "CHD", "ACO"}, ICO_UNI, 0, 13, 0},             /* (Gabare) a chord, its notes together (CHORDS; accord, acorde) */
 };
 /* the tricks of a table's steps (TABLE): each acts on the note playing when its step comes */
 enum { TB_NONE, TB_HIT, TB_CUT, TB_VIB, TB_BEND, TB_SHAPE, TB_CRUSH, TB_VSL, TB_PAN, TB_HOP, TB_N };
@@ -563,6 +565,12 @@ static const chord_t CHORDS[14] = {
     {{"AUG", "AUG", "AUM"}, 3, {0, 4, 8, 0}}, {{"2OC", "2OC", "2OC"}, 3, {0, 12, 24, 0}}, {{"AD9", "AD9", "AD9"}, 4, {0, 4, 7, 14}},
     {{"TRI", "TRL", "TRI"}, 2, {0, 1, 0, 0}}, {{"BAS", "LOW", "BAJ"}, 2, {0, -12, 0, 0}},
 };
+/* (Gabare) ACC (FX_CHORD): a chord's notes played together on one track, sharing its envelope, volume and effect
+ * (kawa_snd.c track_chunk, kawa_sk.c). CHORD_CUSTOM: a chord a computer gives (chord_custom, kawa_bridge.c). The sum of
+ * n notes is brought down by 1/sqrt(n) */
+#define CHORD_MAX 4u
+#define CHORD_CUSTOM 127
+static const int32_t CHORD_GAIN[CHORD_MAX] = {32767, 23170, 18919, 16384};
 
 /* ---- scales (bit n: semitone n above the root) */
 typedef struct {

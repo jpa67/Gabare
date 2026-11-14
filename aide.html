@@ -1,0 +1,291 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -- (Gabare) l'aide-mémoire : les gestes de KAWA (d'après son manuel, manual/fr.html)
+     et ce que Gabare ajoute, sur une page qui s'imprime. Autonome : ni police, ni script, ni image du réseau. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gabare — aide-mémoire</title>
+<meta name="description" content="L'aide-mémoire de Gabare sur le M-VAVE FM-1 : les boutons, les encodeurs, écrire un motif, les sons, la chaîne, les outils, les effets de case, les accords, l'arpégiateur, les voix FM.">
+<meta name="theme-color" content="#0b1726">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1726'/%3E%3Cpath d='M5 19h22l-4 6H9z' fill='%23ffde6e'/%3E%3Cpath d='M15 5v13h-8z' fill='%233ed8ff'/%3E%3Cpath d='M17 8v10h7z' fill='%23eeeaff'/%3E%3C/svg%3E">
+<style>
+/* La rivière la nuit, comme index.html ; à l'impression, noir sur blanc. Polices du système uniquement. */
+:root {
+  --night: #0b1726; --panel: #11223a; --panel-2: #183050; --rule: #29486e;
+  --ink: #eef4ff; --muted: #a9bdd8; --gold: #ffde6e; --river: #3ed8ff; --new: #5ce274;
+  --k1: #ff6b6b; --k2: #ffd23f; --k3: #5ce274; --k4: #4fa8ff;
+  --text: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--night); color: var(--ink); font: 0.95rem/1.5 var(--text);
+  background-image: radial-gradient(900px 420px at 50% -80px, #17345a 0%, transparent 70%);
+  background-repeat: no-repeat;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 22px 16px 48px; }
+header { margin-bottom: 14px; }
+.tagline { margin: 0; color: var(--river); font-size: 0.85rem; letter-spacing: 0.04em; }
+.tagline a { color: inherit; }
+h1 { margin: 4px 0 6px; font-size: clamp(1.5rem, 3.2vw, 2.1rem); line-height: 1.15; }
+h1 b { color: var(--gold); }
+.lead { margin: 0; color: var(--muted); max-width: 72ch; }
+.legend { margin: 10px 0 0; color: var(--muted); font-size: 0.85rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 12px; align-items: start; }
+.card {
+  background: linear-gradient(180deg, var(--panel) 0%, #0e1d31 100%); border: 1px solid var(--rule); border-radius: 12px;
+  padding: 12px 14px 10px; break-inside: avoid;
+}
+.card.wide { grid-column: 1 / -1; }
+.card.new { border-color: #2f7a46; }
+h2 { margin: 0 0 8px; font-size: 1.02rem; color: var(--gold); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+h2 small { color: var(--new); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th, td { text-align: left; vertical-align: top; padding: 4px 6px; border-top: 1px solid #203a5c; }
+th { color: var(--muted); font-weight: 600; font-size: 0.78rem; border-top: none; }
+td:first-child { white-space: nowrap; }
+.k {
+  display: inline-block; font: 600 0.78rem/1.25 var(--mono); padding: 1px 6px; border-radius: 5px;
+  background: var(--panel-2); border: 1px solid #36598a; color: var(--ink); white-space: nowrap;
+}
+.k.k1 { border-color: var(--k1); color: var(--k1); } .k.k2 { border-color: var(--k2); color: var(--k2); }
+.k.k3 { border-color: var(--k3); color: var(--k3); } .k.k4 { border-color: var(--k4); color: var(--k4); }
+ol, ul { margin: 0; padding-left: 1.2em; }
+li { margin: 2px 0; }
+p { margin: 4px 0; }
+.note { color: var(--muted); font-size: 0.82rem; }
+.tag { color: var(--new); font-weight: 600; }
+.cols2 { columns: 2 220px; column-gap: 18px; }
+.cols2 li { break-inside: avoid; }
+footer { margin-top: 18px; color: var(--muted); font-size: 0.82rem; }
+footer a, .card a { color: var(--river); }
+@media print {
+  :root { --ink: #000; --muted: #333; --gold: #000; --river: #000; --new: #000; --panel-2: #fff; }
+  body { background: #fff; color: #000; font-size: 9pt; }
+  .wrap { max-width: none; padding: 0; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .card { background: #fff; border: 1px solid #999; padding: 6px 8px; }
+  th, td { border-top-color: #ccc; padding: 2px 4px; }
+  .k { background: #fff; border-color: #666; color: #000; }
+  .legend, footer { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <p class="tagline"><a href="index.html">Gabare</a> · aide-mémoire</p>
+  <h1><b>GABARE</b> sur le FM-1, en une page</h1>
+  <p class="lead">Les gestes du tracker de KAWA, et ce que Gabare y ajoute (en vert). Le détail est dans le
+  <a href="manual/fr.html">manuel de KAWA</a> et le <a href="README.fr.md">README de Gabare</a>.</p>
+  <p class="legend">Les quatre potards : <span class="k k1">K1</span> rouge, <span class="k k2">K2</span> jaune,
+  <span class="k k3">K3</span> vert, <span class="k k4">K4</span> bleu. La ligne du bas de l'écran dit toujours ce qu'ils font.
+  « Tenu » : garder le bouton enfoncé. Ctrl+P imprime la page.</p>
+</header>
+
+<div class="grid">
+
+<section class="card">
+  <h2>Les encodeurs</h2>
+  <table>
+    <tr><td><span class="k">ALGORITHM</span></td><td>la <b>piste</b> (sur la CHAINE : la case ; sur MIX : jusqu'au master)</td></tr>
+    <tr><td><span class="k">SELECT</span></td><td>le <b>curseur</b> : la ligne (PISTES), la page de 16 pas (GRILLE), le menu (PROJETS) ; sur EDIT, LFO, ENV, FX, GLO : la page du groupe</td></tr>
+    <tr><td><span class="k">PRESETS</span></td><td>sur PISTES, GRILLE, MAGIE : le <b>motif</b> (P01 à P32) ; sur SON : le <b>son d'usine</b> ; sur la CHAINE : le motif de la case</td></tr>
+    <tr><td><span class="k">K1</span>…<span class="k">K4</span></td><td>les réglages de la page</td></tr>
+    <tr><td><span class="k">MASTER</span></td><td>le volume général</td></tr>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Les boutons et leurs pages</h2>
+  <table>
+    <tr><th>Bouton</th><th>Un appui</th><th>Encore</th></tr>
+    <tr><td><span class="k">HOME</span></td><td>PISTES (le tracker)</td><td>tenu : l'aide</td></tr>
+    <tr><td><span class="k">SEQ</span></td><td>GRILLE (16 pas)</td><td>retour aux pistes</td></tr>
+    <tr><td><span class="k">EDIT</span></td><td>SON de la piste</td><td>SON 2, OPÉRATEUR…, EFFET, TABLE</td></tr>
+    <tr><td><span class="k">ENV</span></td><td>ENVELOPPE</td><td>MIX</td></tr>
+    <tr><td><span class="k">LFO</span></td><td>LFO</td><td>MODULATION</td></tr>
+    <tr><td><span class="k">SCL</span></td><td>GAMME</td><td><span class="tag">ARPÈGE</span>, puis MAGIE, puis les pistes</td></tr>
+    <tr><td><span class="k">GLO</span></td><td>CHAINE</td><td>GROOVE, puis OPTIONS</td></tr>
+    <tr><td><span class="k">FX</span></td><td>ENVOIS</td><td>LIVE ; tenu : LIVE tant que tenu</td></tr>
+    <tr><td><span class="k">SAVE</span></td><td>PROJETS</td><td>tenu : les outils</td></tr>
+    <tr><td><span class="k">ARP</span></td><td>efface sous le curseur</td><td>tenu : « majuscule » d'un geste</td></tr>
+    <tr><td><span class="k">OCT−</span> <span class="k">OCT+</span></td><td colspan="2">l'octave ; selon la page : pas de la grille, cases de la chaîne, retour / OK</td></tr>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Écrire un motif</h2>
+  <ol>
+    <li><span class="k">ALGORITHM</span> choisit la piste, <span class="k">HOME</span> montre le tracker.</li>
+    <li><span class="k">REC</span> (curseur rouge), puis joue les touches : chaque note s'écrit à la ligne du curseur.</li>
+    <li><span class="k">REC</span> tenu + <span class="k">SELECT</span> : de combien de lignes le curseur saute (2 : croches, 4 : noires).</li>
+    <li>Retoucher une case : <span class="k">SELECT</span> la ligne, puis <span class="k k1">K1</span> la note, <span class="k k2">K2</span> le volume, <span class="k k3">K3</span> l'effet, <span class="k k4">K4</span> sa valeur.</li>
+    <li><span class="k">ARP</span> efface la case ; une case <b>OFF</b> arrête la note d'avant.</li>
+    <li><span class="k">ARP</span> tenu + <span class="k">SELECT</span> : insère / ôte une ligne de la piste ; + <span class="k">ALGORITHM</span> : du motif entier.</li>
+  </ol>
+  <p class="note">Batterie : <span class="k">SEQ</span>, les 16 touches blanches sont les pas ; <span class="k k1">K1</span> la percussion ; un pas tenu + <span class="k">ARP</span> l'efface ; <span class="k">OCT−</span>/<span class="k">OCT+</span> : 16, 32 ou 64 pas.</p>
+</section>
+
+<section class="card">
+  <h2>Les sons</h2>
+  <ol>
+    <li><span class="k">ALGORITHM</span> la piste, puis <span class="k">EDIT</span> : la page SON.</li>
+    <li><span class="k">PRESETS</span> : les sons d'usine de la piste.</li>
+    <li><span class="k">ARP</span> tenu + <span class="k">PRESETS</span> : le <b>moteur</b> suivant / précédent.</li>
+    <li><span class="k k1">K1</span>…<span class="k k4">K4</span> règlent le son ; <span class="k">SELECT</span> passe à SON 2, EFFET, TABLE…</li>
+    <li>Un son retouché a une étoile ; <span class="k">PRESETS</span> montre alors le son d'usine en doré : <span class="k">OCT+</span> le charge, <span class="k">OCT−</span> garde le tien.</li>
+  </ol>
+  <p class="note">Le son appartient à la piste pour tout le morceau. Les volumes, panos et envois : <span class="k">ENV</span> deux fois (MIX).</p>
+</section>
+
+<section class="card new">
+  <h2>Les 15 moteurs <small>GABARE</small></h2>
+  <table>
+    <tr><td>KAWA</td><td>CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE</td></tr>
+    <tr><td>Skiff</td><td>ANALOG, PHASE, LOFI, VOIX, TRIO, ORGUE, PHYS</td></tr>
+    <tr><td>JIANT</td><td>CORDE, ADD</td></tr>
+  </table>
+  <ul>
+    <li><b>FM : une seule piste</b> à la fois (« FM : UNE SEULE PISTE »).</li>
+    <li><b>PHYS : quatre pistes au plus</b> (« PHYS : 4 PISTES MAX »).</li>
+    <li>Leurs 8 réglages sont sur SON 1 et SON 2 ; l'enveloppe, les effets et les envois de KAWA s'appliquent autour.</li>
+  </ul>
+</section>
+
+<section class="card new">
+  <h2>La piste FM : SON FM <small>GABARE</small></h2>
+  <p>Sur la page SON de la piste FM, <span class="k k1">K1</span> <b>SON FM</b> passe, dans l'ordre :</p>
+  <ol>
+    <li>les <b>12 sons de KAWA</b> (PIANO TINE … KALIMBA) ;</li>
+    <li>les <b>128 voix d'origine du FM-1</b> (M-VAVE), par groupes de quatre : PIANO, ORGAN, SYN LEAD, SYN PAD 1, puis 2… ; BASS, SYN BASS 1 à 8 sont les voix 35 à 64 ;</li>
+    <li>les <b>32 voix de ta banque DX7</b>, si tu en as envoyé une (<a href="dx7.html">dx7.html</a> ou Fm1Studio).</li>
+  </ol>
+  <p class="note">La voix n° N d'origine est au cran 11 + N depuis PIANO TINE (BASS 1, n° 35 : 46 crans). PRESETS, lui, ne parcourt que les 12 sons de KAWA.</p>
+</section>
+
+<section class="card">
+  <h2>Les motifs et la chaîne</h2>
+  <ul>
+    <li><span class="k">PRESETS</span> (sur PISTES) : passer d'un motif à l'autre.</li>
+    <li>Copier un motif : <b>MAGIE</b>, touche 12 <b>CLONER</b> (dans le prochain motif vide, ajouté à la chaîne).</li>
+    <li><span class="k">GLO</span> : la CHAINE. <span class="k">ALGORITHM</span> choisit la case, <span class="k">PRESETS</span> son motif.</li>
+    <li>Sur le « + » au bout : une touche blanche ajoute ce motif (touche 1 : P01…). <span class="k">OCT+</span> copie la case, <span class="k">OCT−</span> l'enlève.</li>
+    <li><span class="k k3">K3</span> : répétitions ×1 à ×16 ; <span class="k k1">K1</span> tempo, <span class="k k2">K2</span> swing, <span class="k k4">K4</span> longueur du motif.</li>
+    <li><span class="k">ARP</span> : BOUCLE (le motif affiché) ou <b>CHAINE</b> (le morceau).</li>
+    <li><b>Jouer le morceau</b> : mode CHAINE, curseur sur la première case, <span class="k">PLAY</span>.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Les outils : SAVE tenu</h2>
+  <ol>
+    <li>Tiens <span class="k">SAVE</span> (la barre OUTILS se remplit).</li>
+    <li><span class="k">SELECT</span> : OPTIONS, ANNULER, REFAIRE, <b>EFFACER</b>, <b>COPIER</b>, <b>COLLER</b>, HASARD.</li>
+    <li><span class="k k3">K3</span> : sur la piste du curseur (« SUR 2 FM ») ou le motif (« SUR MOTIF »).</li>
+    <li>Lâche <span class="k">SAVE</span> : c'est fait.</li>
+  </ol>
+  <p class="note"><span class="k">SAVE</span> tenu + <span class="k">OCT−</span> / <span class="k">OCT+</span> : annuler / refaire aussitôt (10 étapes). Copier une piste : COPIER sur elle, curseur sur l'autre piste ou un autre motif, COLLER (les notes, pas le son).</p>
+</section>
+
+<section class="card">
+  <h2>Sauver</h2>
+  <ul>
+    <li><span class="k">SAVE</span>, SAUVER ou SAUVER SOUS…, <span class="k">OCT+</span> ; <span class="k">SELECT</span> l'emplacement.</li>
+    <li>Le nom : <span class="k">SELECT</span> la lettre, <span class="k k1">K1</span> la change, <span class="k k2">K2</span> un nom au hasard.</li>
+    <li>Ensuite : <span class="k">SAVE</span> puis <span class="k">OCT+</span> resauve au même endroit.</li>
+    <li>Nouveau morceau : <span class="k">SAVE</span>, NOUVEAU MORCEAU, <span class="k">OCT+</span>.</li>
+  </ul>
+  <p class="note">Gabare sauve tout seul dans l'emplacement AUTO quand rien ne joue.</p>
+</section>
+
+<section class="card new">
+  <h2>L'arpégiateur au clavier <small>GABARE</small></h2>
+  <ul>
+    <li><span class="k">SCL</span> deux fois : la page ARPÈGE.</li>
+    <li><span class="k k1">K1</span> le mode (OFF, MONTE, DESCEND, MONTE+DESC, HASARD, COMME JOUÉ), <span class="k k2">K2</span> la vitesse (1/32 à 1/4), <span class="k k3">K3</span> les octaves, <span class="k k4">K4</span> la durée.</li>
+    <li>Tiens des touches (jusqu'à 8) : elles s'arpègent sur la piste choisie, au tempo.</li>
+    <li><span class="k">ARP</span> (sur cette page) : garde les notes une fois lâchées.</li>
+    <li><span class="k">REC</span> pendant la lecture : l'arpège s'écrit dans le motif.</li>
+  </ul>
+</section>
+
+<section class="card new">
+  <h2>Les accords : l'effet ACC <small>GABARE 0.6</small></h2>
+  <ul>
+    <li>Sur une case : <span class="k k3">K3</span> un cran à gauche de « --- » : <b>ACC</b> (icône ∞) ; <span class="k k4">K4</span> l'accord.</li>
+    <li>Jusqu'à 4 notes ensemble, qui partagent l'enveloppe et les effets de la piste ; l'accord tient jusqu'à la note suivante.</li>
+    <li>Sur CARRÉ, ONDE, FM, ANALOG, PHASE, LOFI, TRIO ; les autres moteurs jouent la note seule.</li>
+    <li>Chaque note de plus coûte presque une piste : quand le FM-1 sature, elles partent en premier.</li>
+  </ul>
+  <p class="note">Les 14 accords (ARP et ACC) : MAJ, MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS.</p>
+</section>
+
+<section class="card wide">
+  <h2>Les effets de case</h2>
+  <p class="note"><span class="k k3">K3</span> l'effet, <span class="k k4">K4</span> sa valeur ; <span class="k">ARP</span> tenu + <span class="k k3">K3</span> <span class="k k4">K4</span> : le second effet de la case (les deux jouent).</p>
+  <ul class="cols2">
+    <li><b>ARP</b> arpège d'un accord</li>
+    <li><b>GLI</b> glisse depuis la note d'avant</li>
+    <li><b>VIB</b> vibrato</li>
+    <li><b>ROL</b> roulé, la note rejouée 2 à 32 fois</li>
+    <li><b>BND</b> plie la hauteur</li>
+    <li><b>CHN</b> chance : une fois sur N</li>
+    <li><b>RET</b> retarde la note dans la ligne</li>
+    <li><b>CUT</b> coupe la note dans la ligne</li>
+    <li><b>ENV</b> tranche de break à l'envers</li>
+    <li><b>HAU</b> ±12 demi-tons pour cette note</li>
+    <li><b>FOR</b> forme d'onde de cette note</li>
+    <li><b>ECR</b> écrase les bits</li>
+    <li><b>VOL</b> glissé de volume sur la ligne</li>
+    <li><b>PAN</b> pano de cette note</li>
+    <li><b>DEP</b> départ plus loin dans le sample</li>
+    <li><b>SAU</b> saut : la suite reprend à la ligne N</li>
+    <li><b>FIN</b> le motif finit après cette ligne</li>
+    <li><span class="tag">ACC</span> accord, ses notes ensemble</li>
+  </ul>
+</section>
+
+<section class="card wide">
+  <h2>La MAGIE</h2>
+  <p class="note"><span class="k">SCL</span> trois fois avec Gabare (GAMME, ARPÈGE, MAGIE). Une touche blanche lance l'outil ; <span class="k k1">K1</span> sa force, <span class="k k2">K2</span> le dé, <span class="k k3">K3</span> la piste ou le motif. Tout s'annule (<span class="k">SAVE</span> tenu + <span class="k">OCT−</span>).</p>
+  <ul class="cols2">
+    <li>1 HACHOIR (break)</li><li>2 BEAT</li><li>3 MÉLODIE</li><li>4 BASSE</li>
+    <li>5 ARPÈGE</li><li>6 EUCLIDE</li><li>7 VARIER</li><li>8 ROULÉS</li>
+    <li>9 NUANCES</li><li>10 DOUBLER</li><li>11 DÉCALER</li><li>12 CLONER</li>
+    <li>13 TRANSPO</li><li>14 COPIER</li><li>15 COLLER</li><li>16 EFFACER</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Raccourcis utiles</h2>
+  <table>
+    <tr><td><span class="k">HOME</span> tenu</td><td>l'aide de la page</td></tr>
+    <tr><td><span class="k">HOME</span> + <span class="k">PLAY</span></td><td>panique : tout s'arrête</td></tr>
+    <tr><td><span class="k">FX</span> tenu + touches</td><td>effets live tant que tu tiens</td></tr>
+    <tr><td><span class="k">ARP</span> tenu + touche noire</td><td>solo de la piste (MIX)</td></tr>
+    <tr><td><span class="k">SEQ</span> + <span class="k">OCT−</span>/<span class="k">OCT+</span></td><td>motif de 16, 32 ou 64 pas</td></tr>
+  </table>
+</section>
+
+<section class="card new">
+  <h2>Avec Fm1Studio <small>PC</small></h2>
+  <ul>
+    <li>Onglet FM-1, « Connecter » : le panneau « Banques FM-1 » montre les sons de Gabare, joués sur le PC (double-clic).</li>
+    <li>« Envoyer une banque DX7… » écrit une banque dans le FM-1, après confirmation.</li>
+    <li>Ferme Fm1Studio avant de flasher : un seul programme à la fois sur le port MIDI.</li>
+  </ul>
+</section>
+
+</div>
+
+<footer>
+  <p>Gabare : <a href="index.html">l'installer</a> · <a href="dx7.html">envoyer une banque DX7</a> · <a href="samples.html">envoyer des samples</a> ·
+  <a href="manual/fr.html">le manuel de KAWA</a>. GPL-3.0.</p>
+</footer>
+</div>
+</body>
+</html>

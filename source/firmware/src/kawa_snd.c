@@ -157,6 +157,9 @@ static void fx_insert(fxs_t *s, int32_t type, int32_t a, int32_t b, int32_t mix,
 typedef struct {
     uint8_t gate, stage, note, vol, shape, crush, vib, arp_n, arp_i;
     int8_t arp_off[4];
+    uint8_t ch_n;                               /* (Gabare) ACC: the chord's notes (0: the note alone), their semitones */
+    int8_t ch_off[CHORD_MAX];
+    uint32_t cph[CHORD_MAX - 1u];               /* (Gabare) PULSE, WAVE: the chord's other notes' phases */
     int32_t env;                                /* the ADSR, Q16 */
     int32_t amp;                                /* the gain now, Q15 (ramps over a chunk) */
     int32_t pitch, ptgt, glide, sweep, bend;    /* Q8 semitones */
@@ -174,10 +177,21 @@ typedef struct {
 } trk_t;
 static uint32_t vsl_k = 272u;                   /* a VSL unit per chunk: 65536 x CHUNK / the row's frames (seq_tempo) */
 static trk_t tk[NTRK];
+/* (Gabare) a track's chord from a computer (FX_CHORD's CHORD_CUSTOM: kawa_bridge.c), its semitones over the note */
+static int8_t chord_custom[NTRK][CHORD_MAX];
+static uint8_t chord_custom_n[NTRK];
+static int chord_engine(uint32_t e)             /* the engines that play an ACC chord */
+{
+    return e == E_PULSE || e == E_WAVE || e == E_FM || e == E_ANALOG || e == E_PHASE || e == E_LOFI || e == E_TRIO;
+}
 
 /* ---- FM: one track (fm_trk), two voices (the new note and the last one's release). The patch is the
  * project's (prj.fmp: its operators, edited in EDIT) through the track's knobs; the main loop builds it */
 static fm6_note_t fmn[2];
+static fm6_note_t fmc[CHORD_MAX - 1u];          /* (Gabare) ACC on the FM track: the chord's other notes */
+static int8_t fmc_off[CHORD_MAX - 1u];
+static uint8_t fmc_rel[CHORD_MAX - 1u];         /* a last chord's note, releasing at its own pitch (fmc_rpit) */
+static int32_t fmc_rpit[CHORD_MAX - 1u];
 static uint8_t fm_cur, fm_pos, fm_seen;
 static int32_t fm_vpit[2];                     /* a voice's pitch once it releases (Q8 semitones) */
 static int32_t fm_buf[CTL];
@@ -219,6 +233,32 @@ static void fm_build(uint32_t t)                /* main loop: the FM track's pat
         fm_patch[k] = d[k];
     fm_trk = (uint8_t)t;
     fm_gen++;
+}
+
+/* (Gabare) ACC on the FM track: the chord's other notes start with its note; the last chord's that this one has not
+ * release at their pitch */
+static void fm_chord_on(const trk_t *v, uint32_t note, uint32_t vol, int32_t old_pit)
+{
+    const uint8_t *fp = fm_patch;
+    uint32_t i;
+    for (i = 0; i + 1u < CHORD_MAX; i++) {
+        fm6_note_t *c = &fmc[i];
+        if (i + 1u < v->ch_n) {
+            fmc_off[i] = v->ch_off[i + 1u];
+            fmc_rel[i] = 0;
+            fm6_note_init(c, fp, clampi((int32_t)note + fmc_off[i], 0, 127) + fp[FP_TRNSP] - 24, (int32_t)(vol * 8u + 7u), 1);
+        } else if (c->live && !fmc_rel[i]) {
+            if (c->down) fm6_note_key(c, fp, 0);
+            fmc_rel[i] = 1;
+            fmc_rpit[i] = old_pit + fmc_off[i] * 256;
+        }
+    }
+}
+static void fm_chord_off(void)
+{
+    uint32_t i;
+    for (i = 0; i + 1u < CHORD_MAX; i++)
+        if (fmc[i].live && fmc[i].down) fm6_note_key(&fmc[i], fm_patch, 0);
 }
 
 #include "kawa_drums.c"
@@ -380,6 +420,7 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
         if (e == E_FM && t == fm_trk) {
             fm6_note_t *n = &fmn[fm_cur];
             if (n->live && n->down) fm6_note_key(n, fm_patch, 0);
+            fm_chord_off();                     /* (Gabare) */
         }
         return;
     }
@@ -409,6 +450,7 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
     }
     v->bend = 0;
     v->arp_n = 0;
+    v->ch_n = 0;                                /* (Gabare) no ACC: the note alone */
     v->shape = (uint8_t)p[P_SHAPE];
     v->crush = (uint8_t)p[P_CRUSH];
     v->vib = (uint8_t)(e == E_FM || is_sk(e) ? 0 : p[P_VIB]);   /* ((Fm1Studio) a Skiff engine: P_S2 is its own knob) */
@@ -424,7 +466,7 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
             v->glide = 0;
             v->sweep = e <= E_NOISE ? p[P_SWEEP] * 512 : 0;
             if (v->env < 6000 && e <= E_WAVE)
-                v->ph = v->ph2 = 0;             /* the same start every time (chip punch), when it cannot click */
+                v->ph = v->ph2 = v->cph[0] = v->cph[1] = v->cph[2] = 0;   /* the same start every time (chip punch), when it cannot click */
         }
         if (trick(k, FX_ARP, &sv) && sv >= 0 && sv < 14) {
             v->arp_n = (uint8_t)CHORDS[sv].n;
@@ -433,6 +475,15 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
             v->arp_i = 0;
             v->arp_cnt = 0;
             v->arp_len = arp_len ? arp_len * 3u / (uint32_t)clampi(e <= E_NOISE ? p[P_ARPV] : 3, 1, 8) : 700u;
+        }
+        if (chord_engine(e) && trick(k, FX_CHORD, &sv)) {   /* (Gabare) ACC: the chord, its notes together */
+            const int8_t *o = sv == CHORD_CUSTOM ? chord_custom[t] : sv >= 0 && sv < 14 ? CHORDS[sv].off : 0;
+            uint32_t n = sv == CHORD_CUSTOM ? chord_custom_n[t] : sv >= 0 && sv < 14 ? (uint32_t)CHORDS[sv].n : 0u;
+            if (o && n > 1u) {
+                v->ch_n = (uint8_t)(n < CHORD_MAX ? n : CHORD_MAX);
+                for (i = 0; i < CHORD_MAX; i++)
+                    v->ch_off[i] = i < v->ch_n ? o[i] : 0;
+            }
         }
         if (trick(k, FX_VIB, &sv)) v->vib = (uint8_t)sv;
         if (trick(k, FX_BEND, &sv)) v->bend = sv;
@@ -449,9 +500,10 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
             n = &fmn[fm_cur];
             fm6_note_init(n, fp, (int32_t)note + fp[FP_TRNSP] - 24, (int32_t)(vol * 8u + 7u), 1);
             fm6_lfo_key(&fm_lfo);
+            fm_chord_on(v, note, vol, old_pit);   /* (Gabare) ACC */
         }
         if (is_sk(e) && !(v->glide && v->stage))   /* (Fm1Studio) Skiff's engine: its voice starts again (kawa_sk.c) */
-            sk_note_on(t, note, vol);
+            sk_note_on(t, note, vol, v->ch_n, v->ch_off);
     } else if (e == E_KIT)
         drum_on(t, cell_idx(note) & 15u, (trick(k, FX_PITCH, &sv) ? sv : 0) + v->tb_tr + (cell_idx(note) >= 16u ? 12 : 0), trick(k, FX_CRUSH, &sv) ? sv : -1);   /* (17..32: the same drum, tuned up) */
     else {
@@ -481,6 +533,7 @@ static void voice_off(uint32_t t)
     if (prj.snd[t].engine == E_FM && t == fm_trk) {
         fm6_note_t *n = &fmn[fm_cur];
         if (n->live && n->down) fm6_note_key(n, fm_patch, 0);
+        fm_chord_off();                         /* (Gabare) */
     }
 }
 
@@ -521,7 +574,7 @@ static void voice_kill(uint32_t t)               /* the engine changed (t NTRK: 
         drum[t][0].on = drum[t][1].on = 0;
         smp[t][0].on = smp[t][1].on = 0;
         if (t == fm_trk)
-            fmn[0].live = fmn[1].live = 0;
+            fmn[0].live = fmn[1].live = fmc[0].live = fmc[1].live = fmc[2].live = 0;
     }
 }
 
@@ -689,6 +742,8 @@ static void track_chunk(uint32_t t, int32_t *out)
     }
     if (e <= E_NOISE && active) {
         uint32_t inc, inc2 = 0, duty = 0x80000000u, ph = v->ph, ph2 = v->ph2;
+        uint32_t cinc[CHORD_MAX - 1u], cph[CHORD_MAX - 1u], cn = 0, j;   /* (Gabare) ACC's other notes */
+        int32_t cg = 32767;
         int32_t m = crush_mask(v->crush), lp = v->lp, det = p[P_DETUNE];
         int uni = (lv_mask >> t & 1u) ? lv_uni : 0;
         if (e == E_NOISE)
@@ -696,6 +751,13 @@ static void track_chunk(uint32_t t, int32_t *out)
         inc = pitch_inc(pit);
         if (e != E_NOISE && (uni || det))
             inc2 = uni == 2 ? inc >> 1 : inc + (inc >> 7) + (uint32_t)(((uint64_t)inc * (uint32_t)det) >> 11);
+        if (v->ch_n > 1u && e != E_NOISE && cpu_shed < 2u) {   /* (the governor: the note alone) */
+            for (cn = 0; cn + 1u < v->ch_n; cn++) {
+                cinc[cn] = pitch_inc(pit + v->ch_off[cn + 1u] * 256);
+                cph[cn] = v->cph[cn];
+            }
+            cg = CHORD_GAIN[cn];
+        }
         if (e == E_PULSE) {
             static const uint32_t DUTY[4] = {0x20000000u, 0x40000000u, 0x80000000u, 0xC0000000u};
             if (v->shape < 4u && dest != LFD_SHAPE)
@@ -715,6 +777,10 @@ static void track_chunk(uint32_t t, int32_t *out)
                     s = (int32_t)(((int64_t)s * 23170) >> 15);
                     ph2 += inc2;
                 }
+                for (j = 0; j < cn; j++) {      /* (Gabare) ACC */
+                    s += (cph[j] < duty ? 32767 : -32767) + blep(cph[j], cinc[j]) - blep(cph[j] - duty, cinc[j]);
+                    cph[j] += cinc[j];
+                }
             } else if (e == E_WAVE) {
                 const uint8_t *w = WAVES[v->shape & 7u];
                 s = (w[ph >> 27] * 2 - 15) * 2184;
@@ -722,6 +788,10 @@ static void track_chunk(uint32_t t, int32_t *out)
                 if (inc2) {
                     s = ((s + (w[ph2 >> 27] * 2 - 15) * 2184) * 23170) >> 15;
                     ph2 += inc2;
+                }
+                for (j = 0; j < cn; j++) {      /* (Gabare) ACC */
+                    s += (w[cph[j] >> 27] * 2 - 15) * 2184;
+                    cph[j] += cinc[j];
                 }
             } else {
                 uint32_t o = ph;
@@ -732,6 +802,8 @@ static void track_chunk(uint32_t t, int32_t *out)
                 }
                 s = (v->lfsr & 1u) ? 26000 : -26000;
             }
+            if (cn)
+                s = (int32_t)(((int64_t)s * cg) >> 15);
             s &= m;
             lp += (int32_t)(((int64_t)(s - lp) * ton) >> 15);
             v->dc += (lp * 256 - v->dc) >> 11;  /* ~3 Hz high-pass, as the chips' output capacitors */
@@ -740,6 +812,8 @@ static void track_chunk(uint32_t t, int32_t *out)
         v->ph = ph;
         v->ph2 = ph2;
         v->lp = lp;
+        for (j = 0; j < cn; j++)
+            v->cph[j] = cph[j];
     } else if (e == E_FM) {
         const uint8_t *fp = fm_patch;
         if (t != fm_trk) {                      /* (a second FM track cannot happen: the editor refuses it) */
@@ -775,16 +849,37 @@ static void track_chunk(uint32_t t, int32_t *out)
                     if (!n->down && fm6_note_done(n, fp, fm_alg))
                         n->live = 0;
                 }
+                for (k = 0; k < (int32_t)(CHORD_MAX - 1u); k++) {   /* (Gabare) ACC: the chord's other notes */
+                    fm6_note_t *n = &fmc[k];
+                    int32_t bus[CTL], vp = fmc_rel[k] ? pit - v->pitch + fmc_rpit[k] : pit + fmc_off[k] * 256;
+                    if (cpu_shed >= 2u || (cpu_shed && fmc_rel[k]))
+                        n->live = 0;            /* (the governor: the chord goes, its releases first) */
+                    if (!n->live)
+                        continue;
+                    lf = fm6_note_logfreq((vp >> 4) + (fp[FP_TRNSP] - 24) * 16, 0);
+                    if (fm6_note_compute(n, fp, bus, lv, ld, lf, fm_alg, fm_fb, fm_dt, bri << 16)) {
+                        for (j = 0; j < (uint32_t)CTL; j++) {
+                            int32_t x = bus[j] - n->dc;
+                            n->dc += x >> 10;
+                            fm_buf[j] += x >> 10;
+                        }
+                    }
+                    if (!n->down && fm6_note_done(n, fp, fm_alg))
+                        n->live = 0;
+                }
+                if (v->ch_n > 1u)               /* (Gabare) a chord's sum, brought down */
+                    for (j = 0; j < (uint32_t)CTL; j++)
+                        fm_buf[j] = (int32_t)(((int64_t)fm_buf[j] * CHORD_GAIN[v->ch_n - 1u]) >> 15);
             }
             for (i = 0; i < CHUNK; i++)
                 raw[i] = fm_buf[fm_pos + i];
             fm_pos = (uint8_t)(fm_pos ^ CHUNK);
-            if (!fmn[0].live && !fmn[1].live && !v->stage)
+            if (!fmn[0].live && !fmn[1].live && !fmc[0].live && !fmc[1].live && !fmc[2].live && !v->stage)
                 active = 0;
         }
     } else if (is_sk(e)) {                      /* (Fm1Studio) Skiff's engine (kawa_sk.c) */
         if (active)
-            sk_chunk(t, raw, pit, v->env);
+            sk_chunk(t, raw, pit, v->env, cpu_shed < 2u ? v->ch_n : 0u, v->ch_off);   /* ((Gabare) ACC) */
     } else if (e == E_KIT) {
         if (cpu_shed >= 3u) drum[t][drum_next[t]].on = 0;   /* (the governor: the older voice goes) */
         drum_chunk(&drum[t][0], raw);
