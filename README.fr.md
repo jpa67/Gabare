@@ -12,11 +12,11 @@ synthèse pris à deux firmwares de la famille Felucca, un arpégiateur au clavi
 Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare ajoute ; la suite est le
 texte de KAWA.
 
-> **État : 0.6, bêta.** La 0.1 à la 0.5 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
+> **État : 0.7, bêta.** La 0.1 à la 0.6 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
 > simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
 > et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB, la 0.5 ajoute les 128
-> voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste) : sa charge sur le FM-1 reste
-> à mesurer. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste ; sa charge sur le FM-1 reste
+> à mesurer), la 0.7 la relecture du morceau par USB. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
 > avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
 
 | | | |
@@ -152,8 +152,10 @@ La banque DX7 de 32 voix s'envoie depuis la page [dx7.html](dx7.html) (Chrome, E
   les collections en ligne, les tiennes).
 
 Pour un programme : les commandes SysEx 16, 17 et 18 l'envoient, la 19 la relit, 64 octets à la fois (0.4 ; `F0 7D 4B
-57 cmd pack7(args) F7`, comme les samples de KAWA). Elles sont décrites en tête de `source/firmware/src/kawa_sysex.c`.
-INFO répond aussi `GABARE`, le nombre de moteurs, et si une banque est là.
+57 cmd pack7(args) F7`, comme les samples de KAWA). La 20 relit le morceau en cours, tel qu'il est en mémoire, sauvé ou
+non (0.7 : ses motifs, sa chaîne, ses sons, son tempo ; une lecture, qui marche pendant la lecture). Elles sont décrites
+en tête de `source/firmware/src/kawa_sysex.c`. INFO répond aussi `GABARE`, le nombre de moteurs, si une banque est là,
+et la taille et le format du morceau. Fm1Studio s'en sert pour importer le morceau du FM-1, effets des cases compris.
 
 ### Le reste
 

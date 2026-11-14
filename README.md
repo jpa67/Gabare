@@ -11,11 +11,11 @@ Omnipotard (the tracker, its six tracks, its effects, its tools, its installer) 
 firmwares of the Felucca family, an arpeggiator on the keys, and DX7 banks on the FM track. Everything KAWA's manual
 says holds for Gabare. This first part says what Gabare adds; the rest is KAWA's text.
 
-> **Status: 0.6, beta.** 0.1 to 0.5 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
+> **Status: 0.7, beta.** 0.1 to 0.6 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
 > measured). STRING, ADD, the arpeggiator and DX7 banks (0.3) pass KAWA's tests and the simulator, not yet all of them
 > on the FM-1. 0.4 reads the DX7 bank back over USB (SysEx command 19, see `kawa_sysex.c`), 0.5 adds the FM-1's 128
-> original voices to the FM track, 0.6 the ACC cell effect (chords on a track); its load on the FM-1 is still to be
-> measured.
+> original voices to the FM track, 0.6 the ACC cell effect (chords on a track; its load on the FM-1 is still to be
+> measured), 0.7 reading the song back over USB (SysEx command 20).
 
 ## What Gabare adds
 

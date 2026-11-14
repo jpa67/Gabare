@@ -17,9 +17,12 @@
  *  17 DX WRITE 0 off(3 B LE) data    -> rc, 0, off       (off a multiple of 256, in order, to 4096)
  *  18 DX END 0 crc(4 B LE)           -> rc, 0            (the CRC-32 of the 4096 bytes; 7-bit bytes, a name)
  *  19 DX READ 0 off(3 B LE)          -> rc, 0, off, 64 B (off a multiple of 64, below 4096; rc 5 and no data: no bank)
+ * (Gabare 0.7) the song being played or edited, read back (the RAM's project_t, saved or not; a read: never busy):
+ *  20 PRJ READ 0 off(3 B LE)         -> rc, 0, off, up to 64 B (off a multiple of 64, below its size; the last one shorter)
+ * INFO (Gabare 0.7) also says the project's size (3 B LE) and its format (PRJ_VERSION), after the bank's byte.
  * INFO's last byte (Gabare): 1 a DX7 bank is there.
  * Codes: 0 ok, 1 bad arguments, 2 busy (playing), 3 flash, 4 CRC, 5 no session / out of order. */
-enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 16, KW_DXWRITE, KW_DXEND, KW_DXREAD };
+enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 16, KW_DXWRITE, KW_DXEND, KW_DXREAD, KW_PRJREAD };
 #define KW_DXCHUNK 64u                          /* (Gabare) DX READ: 69 bytes a reply, under kw_reply's 100 */
 #define KW_DXSLOT 0xDDu                         /* (Gabare) kw_slot while a DX7 bank comes */
 typedef char dx_fits_the_store[DX_AT + 0x1000u <= STORE_HI && (DX_AT & 0xFFFu) == 0u ? 1 : -1];
@@ -181,7 +184,9 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         r[13] = 'G'; r[14] = 'A'; r[15] = 'B'; r[16] = 'A'; r[17] = 'R'; r[18] = 'E';
         r[19] = (uint8_t)E_N;
         r[20] = dx_ok;                          /* (Gabare) a DX7 bank */
-        kw_reply(cmd, r, 21);
+        r[21] = (uint8_t)sizeof prj; r[22] = (uint8_t)(sizeof prj >> 8); r[23] = (uint8_t)(sizeof prj >> 16);   /* (0.7) */
+        r[24] = PRJ_VERSION;
+        kw_reply(cmd, r, 25);
         return;
     }
     case KW_BEGIN:
@@ -301,6 +306,15 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         if (!dx_ok) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
         memcpy(r + 5, kw_xip(DX_AT + off), KW_DXCHUNK);
         kw_reply(cmd, r, 5 + KW_DXCHUNK);
+        return;
+    }
+    case KW_PRJREAD: {                          /* (Gabare 0.7) the song, back to the computer (a read: never busy) */
+        uint32_t off = n == 4u ? (uint32_t)a[1] | (uint32_t)a[2] << 8 | (uint32_t)a[3] << 16 : 0xFFFFFFFFu, len;
+        r[2] = n == 4u ? a[1] : 0; r[3] = n == 4u ? a[2] : 0; r[4] = n == 4u ? a[3] : 0;
+        if (n != 4u || k != 0u || off % KW_DXCHUNK || off >= sizeof prj) { r[0] = KW_EARGS; kw_reply(cmd, r, 5); return; }
+        len = sizeof prj - off < KW_DXCHUNK ? (uint32_t)(sizeof prj - off) : KW_DXCHUNK;
+        memcpy(r + 5, (const uint8_t *)&prj + off, len);
+        kw_reply(cmd, r, 5 + len);
         return;
     }
     default:
