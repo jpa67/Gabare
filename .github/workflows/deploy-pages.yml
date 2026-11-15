@@ -17,12 +17,14 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/gabare'
+    # (Gabare) GitHub publishes no site from a private repository on a free account: the job waits for a public one.
+    if: github.ref == 'refs/heads/gabare' && !github.event.repository.private
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     permissions:
+      contents: read          # (Gabare) the checkout (the job's permissions replace the workflow's)
       pages: write
       id-token: write
     steps:
