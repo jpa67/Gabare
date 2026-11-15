@@ -82,6 +82,8 @@ typedef struct {
 #define POOL __attribute__((section(".pool")))
 #endif
 static project_t prj POOL;
+static uint8_t prj_rx;                          /* (Gabare 0.8) a song comes over USB (kawa_sysex.c PRJ WRITE): prj is
+                                                 * half written, the panel leaves it alone until it is whole */
 
 /* 64 steps: a pattern can go on into the next one (its pad[0] is 1): both play as one, 32 + 32 steps (GRID, OCT-/OCT+).
  * The next pattern stays a pattern of its own: unlinked, it is the second half played alone */

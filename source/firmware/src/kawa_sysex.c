@@ -20,11 +20,18 @@
  * (Gabare 0.7) the song being played or edited, read back (the RAM's project_t, saved or not; a read: never busy):
  *  20 PRJ READ 0 off(3 B LE)         -> rc, 0, off, up to 64 B (off a multiple of 64, below its size; the last one shorter)
  * INFO (Gabare 0.7) also says the project's size (3 B LE) and its format (PRJ_VERSION), after the bank's byte.
+ * (Gabare 0.8) a song from the computer, in place of the one in RAM (INFO's byte 25: 1, it takes one):
+ *  21 PRJ BEGIN 0                    -> rc, 0            (stopped only; the song in RAM saved first as the autosave)
+ *  22 PRJ WRITE 0 off(3 B LE) data   -> rc, 0, off       (off a multiple of 256, in order; data <= 256 B, into RAM)
+ *  23 PRJ END 0                      -> rc, 0            (whole, its magic, format and CRC right: it plays; else, and
+ *                                                         after 10 s without a frame, the autosave comes back)
+ * The song received is not saved into a slot: SAVE on the FM-1 does (the autosave keeps it, with its '*').
  * INFO's last byte (Gabare): 1 a DX7 bank is there.
  * Codes: 0 ok, 1 bad arguments, 2 busy (playing), 3 flash, 4 CRC, 5 no session / out of order. */
-enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 16, KW_DXWRITE, KW_DXEND, KW_DXREAD, KW_PRJREAD };
+enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 16, KW_DXWRITE, KW_DXEND, KW_DXREAD, KW_PRJREAD, KW_PRJBEGIN, KW_PRJWRITE, KW_PRJEND };
 #define KW_DXCHUNK 64u                          /* (Gabare) DX READ: 69 bytes a reply, under kw_reply's 100 */
 #define KW_DXSLOT 0xDDu                         /* (Gabare) kw_slot while a DX7 bank comes */
+#define KW_PRJSLOT 0xEEu                        /* (Gabare 0.8) kw_slot while a song comes */
 typedef char dx_fits_the_store[DX_AT + 0x1000u <= STORE_HI && (DX_AT & 0xFFFu) == 0u ? 1 : -1];
 enum { KW_OK, KW_EARGS, KW_EBUSY, KW_EFLASH, KW_ECRC, KW_ESTATE };
 #define USR_AT_SLOT(k) (USR_AT + (uint32_t)(k) * USR_SIZE)
@@ -145,8 +152,35 @@ static void kw_reply(uint32_t cmd, const uint8_t *b, uint32_t n)   /* n <= 100 *
     kw_send(kw_wire, w);
 }
 
+/* (Gabare 0.8) the end of a song's session: the song received (ok), or the one saved at BEGIN back (the autosave) */
+static void kw_prj_done(int ok)
+{
+    uint32_t t;
+    if (ok) {
+        prj_sanitize();
+        for (t = 0; t < NTRK; t++)
+            sed_normalise(t);
+        prj.home = 0;                           /* (it is no slot's yet: SAVE asks for one) */
+        dirty = 1;
+        auto_due = 1;
+    } else if (prj_load(0))
+        prj_new();
+    hist_clear();
+    brushes_reset();
+    ev_push(EV_KILL, NTRK, 0, 0, 0, 0);         /* (every voice of the old song goes, before the sound comes back) */
+    proj_cur = ok ? 0xFF : prj.home >= 1u && prj.home < NSLOT ? prj.home : 0xFF;
+    prj_rx = 0;
+    song_fresh(ok ? TR("MORCEAU RECU !", "SONG IN !", "CANCION RECIBIDA !")
+                  : TR("MORCEAU NON RECU", "SONG NOT IN", "CANCION NO RECIBIDA"));
+    g_force = 1;
+}
+
 static void kw_end_session(void)
 {
+    if (kw_slot == KW_PRJSLOT) {                /* (a song half received: the one before it comes back) */
+        kw_slot = 0xFF;
+        kw_prj_done(0);
+    }
     kw_slot = 0xFF;
     audio_hold = 0;
 }
@@ -186,7 +220,8 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         r[20] = dx_ok;                          /* (Gabare) a DX7 bank */
         r[21] = (uint8_t)sizeof prj; r[22] = (uint8_t)(sizeof prj >> 8); r[23] = (uint8_t)(sizeof prj >> 16);   /* (0.7) */
         r[24] = PRJ_VERSION;
-        kw_reply(cmd, r, 25);
+        r[25] = 1;                              /* (0.8) it takes a song (PRJ WRITE) */
+        kw_reply(cmd, r, 26);
         return;
     }
     case KW_BEGIN:
@@ -317,6 +352,42 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         kw_reply(cmd, r, 5 + len);
         return;
     }
+    case KW_PRJBEGIN:                           /* (Gabare 0.8) a song from the computer */
+        if (n != 1u || k != 0u) { r[0] = KW_EARGS; break; }
+        if (sq_play) { r[0] = KW_EBUSY; break; }
+        if (kw_slot != 0xFFu) kw_end_session();
+        kw_hold_wait();
+        audio_hold = 1;                         /* (erasing stalls the bus; and no voice plays a half-written song) */
+        kw_hold_wait();
+        if (prj_save(0)) { r[0] = KW_EFLASH; audio_hold = 0; break; }   /* the song in RAM, kept: it comes back if this fails */
+        prj_rx = 1;
+        kw_slot = KW_PRJSLOT;
+        kw_next = 0;
+        break;
+    case KW_PRJWRITE: {
+        uint32_t off = n >= 4u ? (uint32_t)a[1] | (uint32_t)a[2] << 8 | (uint32_t)a[3] << 16 : 0xFFFFFFFFu, len = n - 4u;
+        r[2] = n >= 4u ? a[1] : 0; r[3] = n >= 4u ? a[2] : 0; r[4] = n >= 4u ? a[3] : 0;
+        if (n < 5u || k != 0u || len > 256u || (off & 0xFFu) || off + len > sizeof prj) { r[0] = KW_EARGS; kw_reply(cmd, r, 5); return; }
+        if (kw_slot != KW_PRJSLOT) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
+        if (off + 256u == kw_next) { r[0] = KW_OK; kw_reply(cmd, r, 5); return; }   /* (its reply was lost) */
+        if (off != kw_next) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
+        memcpy((uint8_t *)&prj + off, a + 4, len);
+        kw_next = off + 256u;
+        kw_reply(cmd, r, 5);
+        return;
+    }
+    case KW_PRJEND:
+        if (n != 1u || k != 0u) { r[0] = KW_EARGS; break; }
+        if (kw_slot != KW_PRJSLOT) { r[0] = KW_ESTATE; break; }
+        if (kw_next < sizeof prj || prj.magic != PRJ_MAGIC || prj.version != PRJ_VERSION || prj_crc(&prj) != prj.crc) {
+            r[0] = KW_ECRC;
+            kw_end_session();                   /* (the song before it comes back) */
+            break;
+        }
+        kw_slot = 0xFF;
+        kw_prj_done(1);
+        audio_hold = 0;
+        break;
     default:
         r[0] = KW_EARGS;
         break;

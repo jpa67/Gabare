@@ -9,20 +9,71 @@
 Gabare est un firmware libre pour le **M-VAVE FM-1**. C'est [KAWA](https://github.com/Guizmoh/Kawa-Tracker-Fm1)
 d'Omnipotard (le tracker, ses six pistes, ses effets, ses outils, son installeur), auquel Gabare ajoute neuf moteurs de
 synthèse pris à deux firmwares de la famille Felucca, un arpégiateur au clavier et les banques DX7 sur la piste FM.
-Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare ajoute ; la suite est le
-texte de KAWA.
+Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare change, [en bref](#gabare-par-rapport-à-kawa) puis en
+détail ; la suite est le texte de KAWA.
 
-> **État : 0.7, bêta.** La 0.1 à la 0.6 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
+> **État : 0.8, bêta.** La 0.1 à la 0.7 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
 > simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
 > et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB, la 0.5 ajoute les 128
 > voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste ; sa charge sur le FM-1 reste
-> à mesurer), la 0.7 la relecture du morceau par USB. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> à mesurer), la 0.7 la relecture du morceau par USB, la 0.8 son envoi depuis un ordinateur. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
 > avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
 
 | | | |
 | --- | --- | --- |
 | ![ANALOG](docs/img/gabare/son-analog.png) | ![PHYS](docs/img/gabare/son-phys.png) | ![CORDE](docs/img/gabare/son-corde.png) |
 | ![L'arpégiateur](docs/img/gabare/arpege.png) | ![Une voix DX7 sur la piste FM](docs/img/gabare/fm-dx7.png) | ![Le démarrage](docs/img/gabare/boot.png) |
+
+## Gabare par rapport à KAWA
+
+Gabare part de KAWA 0.10. Ce qui n'est pas dans cette liste est KAWA tel quel ; dans le code, chaque changement
+porte la marque « (Gabare) », et [LICENSING.md](LICENSING.md) dit qui a écrit quoi. Le détail de chaque ajout suit,
+dans [Ce que Gabare ajoute](#ce-que-gabare-ajoute).
+
+### Sur le FM-1
+
+| | KAWA 0.10 | Gabare | Depuis |
+| --- | --- | --- | --- |
+| Moteurs | 6 : CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE | 15 : en plus ANALOG, PHASE, LOFI, VOIX, TRIO, ORGUE, PHYS (Skiff), CORDE, ADD (JIANT), avec 110 sons d'usine ; la page SON dessine le moteur et ses 8 réglages | 0.1 (CORDE, ADD : 0.3) |
+| Charge | la FM sur une piste | la FM sur une piste, **PHYS sur quatre au plus** | 0.2 |
+| Arpège | l'effet de case ARP | en plus, un **arpégiateur au clavier** : la page ARPÈGE (**SCL** : GAMME → ARPÈGE → MAGIE), qui s'écrit en REC | 0.3 |
+| Accords | une note par piste | l'effet de case **ACC** : jusqu'à 4 notes ensemble, sur CARRÉ, ONDE, FM, ANALOG, PHASE, LOFI, TRIO | 0.6 |
+| Piste FM (**SON FM**) | les 12 sons FM de KAWA | en plus les **128 voix d'origine du FM-1** (0.5) et les 32 voix d'une **banque DX7** envoyée (0.3), gardée dans la flash | 0.3 |
+| Morceau par USB | — | relu par l'ordinateur (0.7), reçu de l'ordinateur à la place de celui en mémoire (0.8) | 0.7 |
+| Démarrage | KAWA | GABARE, puis KAWA by Omnipotard et les moteurs de Skiff et de JIANT | 0.1 |
+| Paquet | `kawa-X.Y.fwsc`, identité `FM-1_957` | `gabare-X.Y.fwsc`, identité `FM-1_947` | 0.1 |
+
+### Par USB : les commandes SysEx en plus
+
+Même trame que l'envoi des samples de KAWA (`F0 7D 4B 57 cmd pack7(args) F7`, ses commandes 1 à 6). Elles sont
+décrites en tête de `source/firmware/src/kawa_sysex.c`.
+
+| Commande | Ce qu'elle fait | Depuis |
+| --- | --- | --- |
+| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8) | 0.1 |
+| 16, 17, 18 DX BEGIN, WRITE, END | écrire une banque DX7 de 32 voix dans la flash (séquenceur arrêté ; contrôle CRC) | 0.3 |
+| 19 DX READ | relire la banque, 64 octets à la fois | 0.4 |
+| 20 PRJ READ | relire le morceau en mémoire, sauvé ou non, 64 octets à la fois (même pendant la lecture) | 0.7 |
+| 21, 22, 23 PRJ BEGIN, WRITE, END | recevoir un morceau (séquenceur arrêté) : le sien est d'abord gardé dans la sauvegarde automatique et revient si le nouveau n'arrive pas entier ; **SAVE** range le nouveau | 0.8 |
+
+### Sur l'ordinateur
+
+- [index.html](index.html) : la page d'installation, en français. C'est l'installeur de KAWA, qui prend le
+  `gabare-*.fwsc` le plus récent que nomme `install/SHA256SUMS` ; les lanceurs `INSTALL-*` aussi. Les paquets de
+  KAWA ne sont plus dans `install/`.
+- [dx7.html](dx7.html) : envoyer une banque DX7 (0.3). [samples.html](samples.html) est l'outil de KAWA, inchangé.
+- [aide.html](aide.html) : l'aide-mémoire des gestes de Gabare, à imprimer (0.6).
+- Fm1Studio joue les sons de Gabare sur le PC (avec le code de Gabare), envoie la banque DX7, importe le morceau du
+  FM-1 (0.7) et lui envoie le sien (0.8).
+
+### Ce qui reste de KAWA
+
+- Le tracker, ses six pistes, ses effets, ses outils, ses menus et ses trois langues : rien n'est enlevé.
+- Les projets gardent le format de KAWA (format 5) : les projets, samples et réglages de KAWA se lisent sous Gabare.
+  Un morceau qui se sert d'un moteur de Gabare, de l'effet ACC ou des voix d'origine ne sonne pas pareil sous KAWA,
+  qui ne les a pas.
+- Le [manuel](manual/fr.html) et l'[émulateur web](emulator/index.html) sont ceux de KAWA : ils ne montrent pas ce
+  que Gabare ajoute. [README.es.md](README.es.md) est encore le texte de KAWA seul.
 
 ## Ce que Gabare ajoute
 
@@ -95,40 +146,6 @@ partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (
   enlève d'abord les notes ajoutées par les accords.
 - Les projets ne changent pas de format ; un firmware d'avant la 0.6 ignore l'effet.
 
-### Les accords : l'effet ACC
-
-Un tracker joue une note par piste. Avec l'effet **ACC** (accord) dans une case, la note joue un accord : ses notes
-partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (des accords « paraphoniques »).
-
-- Sur la page PISTES, K3 choisit l'effet de la case (ACC, juste avant `---`), K4 l'accord : les 14 de l'effet ARP (MAJ,
-  MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS), jusqu'à 4 notes. Dans la case, ACC a l'icône ∞ ;
-  ARP garde la sienne et joue les mêmes accords note après note.
-- L'accord tient jusqu'à la note suivante de la piste, ou un OFF. ACC et ARP vont ensemble : l'arpège déplace l'accord.
-- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), ANALOG, PHASE, LOFI,
-  TRIO. Les autres jouent la note seule : BRUIT, KIT, SAMPLE, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
-  mémoire est celle d'une seule voix).
-- **La charge** : chaque note de plus coûte presque une piste de ce moteur (estimé : ~2 % pour CARRÉ ou LOFI, ~5 % pour
-  ANALOG, ~6 % pour FM, par note, à mesurer sur le FM-1 dans OPTIONS). Quand le FM-1 sature, le régulateur de KAWA
-  enlève d'abord les notes ajoutées par les accords.
-- Les projets ne changent pas de format ; un firmware d'avant la 0.6 ignore l'effet.
-
-### Les accords : l'effet ACC
-
-Un tracker joue une note par piste. Avec l'effet **ACC** (accord) dans une case, la note joue un accord : ses notes
-partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (des accords « paraphoniques »).
-
-- Sur la page PISTES, K3 choisit l'effet de la case (ACC, juste avant `---`), K4 l'accord : les 14 de l'effet ARP (MAJ,
-  MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS), jusqu'à 4 notes. Dans la case, ACC a l'icône ∞ ;
-  ARP garde la sienne et joue les mêmes accords note après note.
-- L'accord tient jusqu'à la note suivante de la piste, ou un OFF. ACC et ARP vont ensemble : l'arpège déplace l'accord.
-- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), ANALOG, PHASE, LOFI,
-  TRIO. Les autres jouent la note seule : BRUIT, KIT, SAMPLE, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
-  mémoire est celle d'une seule voix).
-- **La charge** : chaque note de plus coûte presque une piste de ce moteur (estimé : ~2 % pour CARRÉ ou LOFI, ~5 % pour
-  ANALOG, ~6 % pour FM, par note, à mesurer sur le FM-1 dans OPTIONS). Quand le FM-1 sature, le régulateur de KAWA
-  enlève d'abord les notes ajoutées par les accords.
-- Les projets ne changent pas de format ; un firmware d'avant la 0.6 ignore l'effet.
-
 ### Les voix d'origine du FM-1 et les banques DX7
 
 Le moteur FM de KAWA est msfa, le cœur de Dexed : six opérateurs, les 32 algorithmes du DX7 et son format de voix.
@@ -156,6 +173,12 @@ Pour un programme : les commandes SysEx 16, 17 et 18 l'envoient, la 19 la relit,
 non (0.7 : ses motifs, sa chaîne, ses sons, son tempo ; une lecture, qui marche pendant la lecture). Elles sont décrites
 en tête de `source/firmware/src/kawa_sysex.c`. INFO répond aussi `GABARE`, le nombre de moteurs, si une banque est là,
 et la taille et le format du morceau. Fm1Studio s'en sert pour importer le morceau du FM-1, effets des cases compris.
+
+Les 21, 22 et 23 envoient un morceau à la place de celui en mémoire (0.8 ; séquenceur arrêté). Gabare garde d'abord le
+sien dans la sauvegarde automatique ; un morceau incomplet, d'un autre format ou au CRC faux est refusé et le sien
+revient (« MORCEAU NON RECU »), de même après 10 secondes sans trame. Le morceau reçu (« MORCEAU RECU ! ») n'est rangé
+dans aucun emplacement : **SAVE** le range. Fm1Studio s'en sert pour « Envoyer le morceau » : patterns, chaîne, tempo,
+notes et effets des pistes 1 à 6, sons de Gabare ; les tables, l'effet master et le groove du morceau du FM-1 restent.
 
 ### Le reste
 

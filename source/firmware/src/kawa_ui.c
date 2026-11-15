@@ -3758,6 +3758,10 @@ static void ui_tick(void)                       /* what the panel keeps up with,
 
 static void app_step(void)
 {
+    if (prj_rx) {                               /* (Gabare 0.8) a song is coming: no key, no frame, no autosave */
+        kw_poll();
+        return;
+    }
     ui_input();
     kw_poll();
     if (sq_play && follow && page != PG_SONG && page != PG_PROJ && page != PG_OPT && page != PG_GROOVE && ui_pat != sq_pat &&

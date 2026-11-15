@@ -11,11 +11,35 @@ Omnipotard (the tracker, its six tracks, its effects, its tools, its installer) 
 firmwares of the Felucca family, an arpeggiator on the keys, and DX7 banks on the FM track. Everything KAWA's manual
 says holds for Gabare. This first part says what Gabare adds; the rest is KAWA's text.
 
-> **Status: 0.7, beta.** 0.1 to 0.6 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
+> **Status: 0.8, beta.** 0.1 to 0.7 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
 > measured). STRING, ADD, the arpeggiator and DX7 banks (0.3) pass KAWA's tests and the simulator, not yet all of them
 > on the FM-1. 0.4 reads the DX7 bank back over USB (SysEx command 19, see `kawa_sysex.c`), 0.5 adds the FM-1's 128
 > original voices to the FM track, 0.6 the ACC cell effect (chords on a track; its load on the FM-1 is still to be
-> measured), 0.7 reading the song back over USB (SysEx command 20).
+> measured), 0.7 reading the song back over USB (SysEx command 20), 0.8 receiving a song from a computer (SysEx commands
+> 21 to 23: the song in RAM is autosaved first and comes back if the new one does not arrive whole; SAVE keeps the new one).
+
+## Gabare compared with KAWA
+
+Gabare starts from KAWA 0.10. Anything not listed here is KAWA as it is; in the code every change is marked
+"(Gabare)", and [LICENSING.md](LICENSING.md) says who wrote what.
+
+| | KAWA 0.10 | Gabare | Since |
+| --- | --- | --- | --- |
+| Engines | 6: PULSE, WAVE, NOISE, FM, KIT, SAMPLE | 15: also ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS (Skiff), STRING, ADD (JIANT), with 110 factory sounds | 0.1 (STRING, ADD: 0.3) |
+| Load | FM on one track | FM on one track, **PHYS on four at most** | 0.2 |
+| Arpeggio | the ARP cell effect | also an **arpeggiator on the keys** (ARPEGGIO page, written by REC) | 0.3 |
+| Chords | one note a track | the **ACC** cell effect, up to 4 notes together | 0.6 |
+| FM track (**FM SOUND**) | KAWA's 12 FM sounds | also the **FM-1's 128 original voices** (0.5) and a **DX7 bank** of 32 voices (0.3) | 0.3 |
+| Song over USB | — | read by a computer (0.7), received from one (0.8) | 0.7 |
+| Package | `kawa-X.Y.fwsc`, identity `FM-1_957` | `gabare-X.Y.fwsc`, identity `FM-1_947`, boot screen GABARE | 0.1 |
+
+SysEx commands added to KAWA's 1 to 6 (same frame, see the top of `source/firmware/src/kawa_sysex.c`): INFO says
+more (`GABARE`, engines, bank, song size and format, whether a song is accepted); 16 to 18 write a DX7 bank (0.3),
+19 reads it back (0.4); 20 reads the song (0.7); 21 to 23 receive a song (0.8). Pages added: [dx7.html](dx7.html)
+(send a DX7 bank) and [aide.html](aide.html) (the cheat sheet, in French); [index.html](index.html) is KAWA's
+installer, in French, taking the newest `gabare-*.fwsc`. Projects keep KAWA's format (5): KAWA's projects, samples and
+settings load as they are. KAWA's [manual](manual/index.html) and [web emulator](emulator/index.html) do not show
+what Gabare adds.
 
 ## What Gabare adds
 
@@ -27,12 +51,6 @@ says holds for Gabare. This first part says what Gabare adds; the rest is KAWA's
 - **An arpeggiator.** SCL goes SCALE → ARPEGGIO → MAGIC. K1 the mode (UP, DOWN, UP+DOWN, RANDOM, AS PLAYED), K2 the
   rate (1/32 .. 1/4 with triplets), K3 the octaves (1..4), K4 the gate; ARP latches the notes. It follows the
   sequencer's rows while playing, and REC writes it into the pattern (one note a row, a DELAY between rows).
-- **Chords: the ACC cell effect.** A cell's note plays a chord (up to 4 notes, the 14 chords of ARP) that shares the
-  track's envelope, volume and effect. On PULSE, WAVE, FM, ANALOG, PHASE, LOFI and TRIO; the other engines play the
-  note alone. Each extra note costs about one more track of that engine; KAWA's load governor drops them first.
-- **Chords: the ACC cell effect.** A cell's note plays a chord (up to 4 notes, the 14 chords of ARP) that shares the
-  track's envelope, volume and effect. On PULSE, WAVE, FM, ANALOG, PHASE, LOFI and TRIO; the other engines play the
-  note alone. Each extra note costs about one more track of that engine; KAWA's load governor drops them first.
 - **Chords: the ACC cell effect.** A cell's note plays a chord (up to 4 notes, the 14 chords of ARP) that shares the
   track's envelope, volume and effect. On PULSE, WAVE, FM, ANALOG, PHASE, LOFI and TRIO; the other engines play the
   note alone. Each extra note costs about one more track of that engine; KAWA's load governor drops them first.
