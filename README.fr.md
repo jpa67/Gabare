@@ -72,8 +72,11 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
 - Les projets gardent le format de KAWA (format 5) : les projets, samples et réglages de KAWA se lisent sous Gabare.
   Un morceau qui se sert d'un moteur de Gabare, de l'effet ACC ou des voix d'origine ne sonne pas pareil sous KAWA,
   qui ne les a pas.
-- Le [manuel](manual/fr.html) et l'[émulateur web](emulator/index.html) sont ceux de KAWA : ils ne montrent pas ce
-  que Gabare ajoute. [README.es.md](README.es.md) est encore le texte de KAWA seul.
+- L'[émulateur web](emulator/index.html) fait tourner Gabare (0.8) ; les messages de son outil de samples parlent encore de
+  KAWA. Le [manuel](manual/fr.html) est celui de KAWA : il ne montre pas ce que Gabare ajoute.
+  [README.es.md](README.es.md) est encore le texte de KAWA seul.
+- Le site (GitHub Pages) se publie depuis la branche `gabare`, et une étiquette de version (`v0.8`) fait construire et
+  signer `gabare-0.8.fwsc` par la procédure de The Firmware Hub.
 
 ## Ce que Gabare ajoute
 

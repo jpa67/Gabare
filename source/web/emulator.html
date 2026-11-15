@@ -1,5 +1,5 @@
-<title>KAWA Pocket Tracker</title>
-<meta name="description" content="KAWA, Pocket Tracker by Omnipotard: a tracker firmware for the M-VAVE FM-1, running in the browser.">
+<title>Gabare Pocket Tracker</title>
+<meta name="description" content="Gabare, a fork of KAWA (Pocket Tracker by Omnipotard) with the synth engines of Skiff and JIANT: a tracker firmware for the M-VAVE FM-1, running in the browser.">
 <meta name="theme-color" content="#15111d">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2334313b'/%3E%3Crect x='6' y='6' width='20' height='14' rx='2' fill='%23120c24'/%3E%3Crect x='9' y='10' width='4' height='6' fill='%23ff5fb4'/%3E%3Crect x='15' y='9' width='3' height='7' fill='%23ffb03a'/%3E%3Crect x='20' y='12' width='3' height='4' fill='%233ed8ff'/%3E%3Ccircle cx='10' cy='25' r='2.4' fill='%23FF5C5C'/%3E%3Ccircle cx='16' cy='25' r='2.4' fill='%23FFCC40'/%3E%3Ccircle cx='22' cy='25' r='2.4' fill='%235CE274'/%3E%3C/svg%3E">
@@ -281,13 +281,13 @@ kbd { font-family: var(--mono); font-size: 12px; background: #2f2a3b; border-rad
 @media (max-width: 640px) { .ksite { position: static; padding: 6px 8px; } .ksite .ksb { flex-basis: 100%; padding: 4px 8px 6px; } .ksite a.ksl { padding: 0 11px; } }
 </style>
 
-<nav class="ksite" aria-label="KAWA menu">
-  <a class="ksb" href="../index.html" aria-label="KAWA, home">KA<span>WA</span></a>
+<nav class="ksite" aria-label="Gabare menu">
+  <a class="ksb" href="../index.html" aria-label="Gabare, home">GA<span>BARE</span></a>
   <a class="ksl" href="../index.html#install">Install</a>
   <a class="ksl" href="../emulator/index.html" aria-current="page">Emulator</a>
   <a class="ksl" href="../manual/index.html">Manual</a>
   <a class="ksl" href="../samples.html">Samples</a>
-  <a class="ksl" href="https://github.com/Guizmoh/Kawa-Tracker-Fm1">GitHub</a>
+  <a class="ksl" href="https://github.com/jpa67/Gabare">GitHub</a>
 </nav>
 <div class="wrap">
   <div class="device" id="device" data-page="-1">
@@ -315,7 +315,7 @@ kbd { font-family: var(--mono); font-size: 12px; background: #2f2a3b; border-rad
 
   <header class="top">
     <div class="brand">
-      <h1>KA<span>WA</span></h1>
+      <h1>GA<span>BARE</span></h1>
       <span class="beta" id="beta-badge">__KAWA_VER__ BETA</span>
     </div>
     <div class="tag" data-t="tag"></div>
@@ -520,9 +520,9 @@ kbd { font-family: var(--mono); font-size: 12px; background: #2f2a3b; border-rad
   /* ---- the page in three languages (the FM-1's screen follows: kawa_lang) */
   const I18N = {
     en: {
-      tag: "Pocket Tracker by Omnipotard · firmware for the M-VAVE FM-1",
+      tag: "KAWA's Pocket Tracker by Omnipotard, with Skiff's and JIANT's engines · firmware for the M-VAVE FM-1",
       langs: "Language",
-      beta: "<b>This is a beta.</b> KAWA has been tested on a real FM-1. Read the safety section of the manual before you install it. The official firmware can always be reinstalled with M-UPGRADE; that is the risky step, so never unplug the FM-1 while it runs.",
+      beta: "<b>This is a beta.</b> Gabare has been tested on a real FM-1. Read the safety section of the manual before you install it. The official firmware can always be reinstalled with M-UPGRADE; that is the risky step, so never unplug the FM-1 while it runs.",
       tip: "If you like this firmware and would like to encourage me to keep developing it, you can leave me a small tip on <a href=\"https://ko-fi.com/omnipotard\" target=\"_blank\" rel=\"noopener\">Ko-fi</a>.",
       screen: "The FM-1's screen",
       power: "The firmware runs here as it is, compiled to WebAssembly. Turn the sound on, power up, then press any key.",
@@ -624,9 +624,9 @@ kbd { font-family: var(--mono); font-size: 12px; background: #2f2a3b; border-rad
       foot: "KAWA is free software (GPL-3.0), built on Dinghy, Felucca and SLOOP, the open platform of the FM-1 community. The breaks are entirely synthesised. The firmware installs on the FM-1 over USB at your own risk: keep the official V15 firmware and M-UPGRADE at hand to go back."
     },
     fr: {
-      tag: "Pocket Tracker by Omnipotard · firmware pour M-VAVE FM-1",
+      tag: "le Pocket Tracker de KAWA par Omnipotard, avec les moteurs de Skiff et de JIANT · firmware pour M-VAVE FM-1",
       langs: "Langue",
-      beta: "<b>Ceci est une bêta.</b> KAWA a été testé sur un vrai FM-1. Lis la partie sécurité du manuel avant de l'installer. Le firmware officiel se réinstalle toujours avec M-UPGRADE ; c'est l'étape risquée : ne débranche jamais le FM-1 pendant qu'elle tourne.",
+      beta: "<b>Ceci est une bêta.</b> Gabare a été testé sur un vrai FM-1. Lis la partie sécurité du manuel avant de l'installer. Le firmware officiel se réinstalle toujours avec M-UPGRADE ; c'est l'étape risquée : ne débranche jamais le FM-1 pendant qu'elle tourne.",
       tip: "Si vous aimez ce firmware et souhaitez m'encourager à poursuivre son développement, vous pouvez m'offrir un petit pourboire sur <a href=\"https://ko-fi.com/omnipotard\" target=\"_blank\" rel=\"noopener\">Ko-fi</a>.",
       screen: "L'écran du FM-1",
       power: "Le firmware tourne ici tel quel, compilé en WebAssembly. Mets le son, allume, puis appuie sur une touche.",
@@ -728,9 +728,9 @@ kbd { font-family: var(--mono); font-size: 12px; background: #2f2a3b; border-rad
       foot: "KAWA est un logiciel libre (GPL-3.0), construit sur Dinghy, Felucca et SLOOP, la plateforme ouverte de la communauté FM-1. Les breaks sont entièrement synthétisés. Le firmware s'installe sur le FM-1 par USB, à tes risques : garde le firmware officiel V15 et M-UPGRADE sous la main pour revenir en arrière."
     },
     es: {
-      tag: "Pocket Tracker by Omnipotard · firmware para el M-VAVE FM-1",
+      tag: "el Pocket Tracker de KAWA por Omnipotard, con los motores de Skiff y de JIANT · firmware para el M-VAVE FM-1",
       langs: "Idioma",
-      beta: "<b>Esto es una beta.</b> KAWA se ha probado en un FM-1 real. Lee la sección de seguridad del manual antes de instalarlo. El firmware oficial siempre se puede reinstalar con M-UPGRADE; es el paso delicado: nunca desconectes el FM-1 mientras se ejecuta.",
+      beta: "<b>Esto es una beta.</b> Gabare se ha probado en un FM-1 real. Lee la sección de seguridad del manual antes de instalarlo. El firmware oficial siempre se puede reinstalar con M-UPGRADE; es el paso delicado: nunca desconectes el FM-1 mientras se ejecuta.",
       tip: "Si te gusta este firmware y quieres animarme a seguir desarrollándolo, puedes dejarme una pequeña propina en <a href=\"https://ko-fi.com/omnipotard\" target=\"_blank\" rel=\"noopener\">Ko-fi</a>.",
       screen: "La pantalla del FM-1",
       power: "El firmware funciona aquí tal cual, compilado a WebAssembly. Sube el sonido, enciende y luego pulsa una tecla.",

@@ -38,8 +38,9 @@ more (`GABARE`, engines, bank, song size and format, whether a song is accepted)
 19 reads it back (0.4); 20 reads the song (0.7); 21 to 23 receive a song (0.8). Pages added: [dx7.html](dx7.html)
 (send a DX7 bank) and [aide.html](aide.html) (the cheat sheet, in French); [index.html](index.html) is KAWA's
 installer, in French, taking the newest `gabare-*.fwsc`. Projects keep KAWA's format (5): KAWA's projects, samples and
-settings load as they are. KAWA's [manual](manual/index.html) and [web emulator](emulator/index.html) do not show
-what Gabare adds.
+settings load as they are. The [web emulator](emulator/index.html) runs Gabare; KAWA's [manual](manual/index.html)
+does not show what Gabare adds. The site (GitHub Pages) deploys from the branch `gabare`, and a version tag (`v0.8`)
+has The Firmware Hub's workflow build and sign `gabare-0.8.fwsc`.
 
 ## What Gabare adds
 
