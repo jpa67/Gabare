@@ -60,6 +60,8 @@ static int fm_free(uint32_t t)                  /* track t may play FM: no other
 static int eng_free(uint32_t t, uint32_t e)
 {
     uint32_t k, n = 0;
+    if (E_RETIRED(e) || e >= E_N)               /* ((0.9) BRUIT and SAMPLE are gone) */
+        return 0;
     if (e == E_FM)
         return fm_free(t);
     if (e != E_PHYS)
@@ -141,6 +143,23 @@ static uint32_t preset_first(uint32_t e)        /* the first factory sound of an
     return 0;
 }
 
+/* (Gabare 0.9) a song's sound's factory sound, found again by its engine and its SOUND knobs (and its envelope, when two
+ * share the knobs): the list changed in 0.9 (BRUIT and SAMPLE out, NOISE and FM4 in), a song keeps an index into it */
+static uint32_t preset_match(const sound_t *s)
+{
+    uint32_t k, i, knobs = NPRESET;
+    for (k = 0; k < NPRESET; k++) {
+        const preset_t *pr = &PRESETS[k];
+        if (pr->engine != s->engine) continue;
+        for (i = 0; i < 8u && (s->p[P_S0 + i] == pr->s[i] || !PDESC[pr->engine][P_S0 + i].name[0]); i++) {}
+        if (i < 8u) continue;
+        if (knobs == NPRESET) knobs = k;
+        for (i = 0; i < 4u && s->p[P_ATT + i] == pr->env[i]; i++) {}
+        if (i == 4u) return k;
+    }
+    if (knobs < NPRESET) return knobs;
+    return PRESETS[s->preset % NPRESET].engine == s->engine ? s->preset % NPRESET : preset_first(s->engine);
+}
 static uint32_t preset_named(uint32_t e, int32_t s0)   /* a factory sound by its engine and its first knob */
 {
     uint32_t k;
@@ -195,7 +214,7 @@ static uint32_t lane_base(uint32_t t)
     case E_WAVE: return 45u;                    /* A2: the bass */
     case E_NOISE: return 96u;
     case E_FM: return 64u;
-    case E_KIT: case E_SAMPLE: return note_mode(t) == NM_NOTE ? 60u : 1u;
+    case E_KIT: return 1u;
     default: return 69u;
     }
 }
@@ -338,7 +357,7 @@ static void prj_demo(void)
     prj.scale = 1;
     sound_preset(T2, preset_named(E_FM, 11));   /* KALIMBA */
     sound_preset(T5, preset_named(E_KIT, KIT_DEMO));
-    sound_preset(T6, preset_named(E_SAMPLE, BRK_DEMO));
+    sound_preset(T6, preset_named(E_KIT, 7));   /* ((Gabare 0.9) its break: the PERCUS kit plays its slices) */
     prj.snd[T1].p[P_ECHO] = 3;
     prj.snd[T2].p[P_ECHO] = 7;
     prj.snd[T2].p[P_VERB] = 6;
@@ -629,34 +648,7 @@ static uint8_t mg_clone_to = 0xFF;              /* CLONE: the new pattern (the s
 
 static void mg_chop(pat_t *p, uint32_t t, uint32_t inten)
 {
-    uint32_t r, len = p->len, src = (uint32_t)clampi(prj.snd[t].p[P_SRC], 0, BRK_N + NUSR - 1), brk = src < BRK_N ? src : 99u;
-    if (note_mode(t) == NM_SLICE) {
-        for (r = 0; r < len; r++) {
-            uint32_t s = r % 16u, k, pick = s;
-            cell_t *c = &p->c[r][t];
-            if ((r % 8u) == 0u)
-                pick = (r % 16u) == 0u ? 0u : 8u;           /* the downbeats keep a kick */
-            else if ((r % 8u) == 4u && brk < BRK_N) {
-                for (k = 0; k < 16u; k++) {                 /* a snare on 2 and 4 */
-                    uint32_t q = (r + k * 5u) % 16u;
-                    if (BRK_TAG[brk][q] & 2u) { pick = q; break; }
-                }
-            } else if (rnd(16) < inten)
-                pick = rnd(16);
-            c->note = (uint8_t)(pick + 1u);
-            c->vol = (uint8_t)(r % 4u ? 12u : 14u);
-            c->fx = c->fx2 = 0;
-            c->fxv = c->fxv2 = 0;
-            if ((r % 8u) == 7u && rnd(24) < inten) { c->fx = FX_ROLL; c->fxv = (uint8_t)rnd(5); }
-            else if (rnd(40) < inten) { c->fx = FX_REV; }
-            else if (rnd(56) < inten) { c->fx = FX_PITCH; c->fxv = (uint8_t)(int8_t)(rnd(2) ? 12 : -5); }
-        }
-        if (inten > 10u && len >= 4u) {                     /* a roll into the next bar */
-            p->c[len - 1u][t].fx = FX_ROLL;
-            p->c[len - 1u][t].fxv = (uint8_t)(3u + rnd(3));
-        }
-        return;
-    }
+    uint32_t r, len = p->len;                  /* ((Gabare 0.9) the beats shuffled: a SAMPLE track's slices went with it) */
     for (r = 0; r + 4u <= len; r += 4u) {                   /* other tracks: shuffle beats of 4 rows */
         if (rnd(16) < inten) {
             uint32_t a = rnd(len / 4u) * 4u, k;
@@ -688,10 +680,6 @@ static void mg_beat(pat_t *p, uint32_t t, uint32_t inten)
             else if (inten >= 7u && rnd(6) == 0u) { c->note = 5; c->vol = 7; }             /* a hat */
         }
         if (inten > 8u) { cell_t *c = &p->c[len - 1u][t]; c->note = 3; c->vol = 12; c->fx = FX_ROLL; c->fxv = 2; }
-        return;
-    }
-    if (note_mode(t) == NM_SLICE) {
-        mg_chop(p, t, inten);
         return;
     }
     for (r = 0; r < len; r++) {                 /* the noise: hats; the others: a rhythm on the brush note */
@@ -814,7 +802,7 @@ static void mg_rolls(pat_t *p, uint32_t t, uint32_t inten)
         if (rnd(16) > inten && r != len - 1u)
             continue;
         if (!c->note)
-            c->note = (uint8_t)(prj.snd[t].engine == E_KIT ? 3u : note_mode(t) == NM_SLICE ? 13u : brush_note[t]), c->vol = 12;
+            c->note = (uint8_t)(prj.snd[t].engine == E_KIT ? 3u : brush_note[t]), c->vol = 12;
         c->fx = FX_ROLL;
         c->fxv = (uint8_t)(r == len - 1u ? 3u + rnd(4) : rnd(3));
     }
@@ -938,7 +926,7 @@ static const char *magic_run(uint32_t tool, uint32_t pi, uint32_t t, uint32_t sc
         if ((tool == MG_MELO || tool == MG_BASS) && !tonal) tl = MG_BEAT;
         if (tool == MG_BASS && tonal && !is_bass(k)) continue;
         if (tool == MG_BEAT && tonal) continue;
-        if (tool == MG_CHOP && note_mode(k) != NM_SLICE) continue;
+        if (tool == MG_CHOP && note_mode(k) != NM_DRUM && prj.snd[k].engine != E_NOISE) continue;   /* ((0.9) the drums) */
         if (tool == MG_ARP && (!tonal || is_bass(k))) continue;
         if (tool == MG_TRANSP && !IS_TONAL(k)) continue;
         if (tool == MG_EUCL && k != t) continue;
@@ -960,7 +948,8 @@ typedef char prj_fits_a_slot[sizeof(project_t) <= SLOT_SIZE ? 1 : -1];
  * sector after the user's samples (DX_AT, the store's last 4 KiB). A computer sends it (kawa_sysex.c KW_DX_*, the page
  * dx7.html): any bank the user has. Its voices come last on FM SOUND (after KAWA's and the FM-1's original ones), unpacked into the
  * 155-byte voice the FM engine plays (msfa's, Dexed's), as a DX7 does it; the project keeps the voice it took. */
-#define DX_AT (USR_AT + NUSR * USR_SIZE)
+#define DX_AT 0xDF000u                          /* ((Gabare 0.9) where it always was: after KAWA's four sample slots) */
+typedef char dx_at_unchanged[DX_AT == USR_AT + 4u * 0x9000u ? 1 : -1];
 #define DX_SIZE 4096u
 static const uint8_t *kw_xip(uint32_t off);
 static int dx_valid(const uint8_t *b)           /* 7-bit bytes everywhere (an erased sector is 0xFF), a name */
@@ -1168,26 +1157,6 @@ static void prj_from_v4(void)
 }
 
 /* the edit's NORMALISE: the gain that brings the edited part's peak to full scale (x 1 .. x 16) */
-static void sed_normalise(uint32_t t)
-{
-    sedit_t *e = &prj.sed[t];
-    const uint8_t *d;
-    uint32_t len, rate, a, b, peak = 0;
-    e->gain = 256;
-    if (prj.snd[t].engine != E_SAMPLE || !e->norm ||
-        !smp_source((uint32_t)clampi(prj.snd[t].p[P_SRC], 0, BRK_N + NUSR - 1), &d, &len, &rate))
-        return;
-    a = sed_at(e->start, len);
-    b = sed_at(e->end, len);
-    for (; a < b && a < len; a++) {
-        int32_t x = BRK_ULAW[d[a]];
-        uint32_t ax = (uint32_t)(x < 0 ? -x : x);
-        if (ax > peak) peak = ax;
-    }
-    if (peak > 0u)
-        e->gain = (uint16_t)clampi((int32_t)(31000u * 256u / peak), 256, 4096);
-}
-
 static void sed_fix(sedit_t *e)                 /* the edit in order: start < end, the slices between them, rising */
 {
     uint32_t i;
@@ -1214,6 +1183,18 @@ static void prj_sanitize(void)                  /* a loaded project: nothing out
     for (t = 0; t < NTRK; t++) {
         sound_t *s = &prj.snd[t];
         if (s->engine >= E_N) s->engine = E_PULSE;
+        if (E_RETIRED(s->engine)) {             /* ((Gabare 0.9) KAWA's BRUIT: NOISE (white or metal); SAMPLE: the PERCUS kit) */
+            int8_t env[4];
+            const preset_t *pr;
+            for (i = 0; i < 4u; i++) env[i] = s->p[P_ATT + i];
+            pr = &PRESETS[s->engine == E_XNOISE ? preset_named(E_NOISE, s->p[P_S0] ? 3 : 0) : preset_named(E_KIT, 7)];   /* (a break: PERCUS, as the demo) */
+            s->engine = pr->engine;
+            s->preset = (uint8_t)(pr - PRESETS);
+            for (i = 0; i < 8u; i++) s->p[P_S0 + i] = pr->s[i];
+            if (pr->engine == E_NOISE) for (i = 0; i < 4u; i++) s->p[P_ATT + i] = env[i];   /* (the BRUIT's envelope) */
+            else for (i = 0; i < 4u; i++) s->p[P_ATT + i] = pr->env[i];
+        }
+        s->preset = (uint8_t)preset_match(s);   /* ((0.9) the factory sounds moved: found again by what they set) */
         if (s->sat > 15u) s->sat = 0;           /* (0.5: the SAT send, in what 0.4 kept as padding) */
         for (i = 0; i < NPARAM; i++) {
             const pdesc_t *d = &PDESC[s->engine][i];
@@ -1259,7 +1240,6 @@ static void prj_sanitize(void)                  /* a loaded project: nothing out
 
 static int prj_load(uint32_t k)
 {
-    uint32_t t;
     int ver = slot_valid(k, 0);
     if (!ver)
         return -1;
@@ -1268,8 +1248,6 @@ static int prj_load(uint32_t k)
     if (ver == 4)
         prj_from_v4();                          /* a project of KAWA 0.2: it plays as it did */
     prj_sanitize();
-    for (t = 0; t < NTRK; t++)
-        sed_normalise(t);                       /* (a user's sample may have changed since) */
     if (prj.home >= NSLOT)
         prj.home = 0;
     if (k)
@@ -1281,34 +1259,3 @@ static int prj_load(uint32_t k)
     return 0;
 }
 
-/* ---- the user samples. In the emulator they come in by drag and drop (web/wasm_host.c: decoded,
- * mono, 22050 or 11025 Hz, 8-bit mu-law as the breaks). On the FM-1 the slots stay empty until the
- * transfer over USB comes (their place in flash is kept: USR_AT) */
-#if defined(DINGHY_HOST) || defined(KAWA_WASM)
-static uint8_t usr_mem[NUSR][USR_CAP];
-static void usr_put(uint32_t k, const uint8_t *d, uint32_t len, uint32_t rate, const char *name)
-{
-    uint32_t i;
-    if (k >= NUSR)
-        return;
-    if (len > USR_CAP)
-        len = USR_CAP;
-    usr_data[k] = 0;                            /* (the voices stop reading it while it changes) */
-    for (i = 0; i < len; i++)
-        usr_mem[k][i] = d[i];
-
-    usr_hdr[k].magic = USR_MAGIC;
-    usr_hdr[k].len = len;
-    usr_hdr[k].rate = rate == 11025u ? 11025u : 22050u;
-    for (i = 0; i < 11u && name && name[i]; i++)
-        usr_hdr[k].name[i] = name[i] >= 'a' && name[i] <= 'z' ? (char)(name[i] - 32) : name[i];
-    usr_hdr[k].name[i] = 0;
-    usr_data[k] = usr_mem[k];
-}
-#endif
-static const char *usr_name(uint32_t k)         /* the slot's name for the screen */
-{
-    if (k < NUSR && usr_data[k] && usr_hdr[k].name[0])
-        return usr_hdr[k].name;
-    return 0;
-}

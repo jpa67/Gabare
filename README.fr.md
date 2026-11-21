@@ -2,13 +2,14 @@
 
 ![Gabare : l'écran de démarrage](docs/img/gabare/boot.png)
 
-**[Installer Gabare](index.html)** · [Envoyer une banque DX7](dx7.html) · [Envoyer des samples](samples.html) · [Manuel de KAWA](manual/fr.html)
+**[Installer Gabare](index.html)** · [Envoyer une banque DX7](dx7.html) · [Manuel de KAWA](manual/fr.html)
 
 **Français** · [English](README.md) · [Español](README.es.md)
 
 Gabare est un firmware libre pour le **M-VAVE FM-1**. C'est [KAWA](https://github.com/Guizmoh/Kawa-Tracker-Fm1)
-d'Omnipotard (le tracker, ses six pistes, ses effets, ses outils, son installeur), auquel Gabare ajoute neuf moteurs de
-synthèse pris à deux firmwares de la famille Felucca, un arpégiateur au clavier et les banques DX7 sur la piste FM.
+d'Omnipotard (le tracker, ses six pistes, ses effets, ses outils, son installeur), auquel Gabare ajoute onze moteurs de
+synthèse pris à trois firmwares de la famille Felucca, un arpégiateur au clavier, des effets, le MIDI par canaux et les
+banques DX7 sur la piste FM. Depuis la 0.9, Gabare n'a plus le moteur SAMPLE de KAWA ni ses breaks.
 Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare change, [en bref](#gabare-par-rapport-à-kawa) puis en
 détail ; la suite est le texte de KAWA.
 
@@ -16,8 +17,9 @@ détail ; la suite est le texte de KAWA.
 > simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
 > et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB, la 0.5 ajoute les 128
 > voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste ; sa charge sur le FM-1 reste
-> à mesurer), la 0.7 la relecture du morceau par USB, la 0.8 son envoi depuis un ordinateur, la 0.9 le refus d'écrire sur une
-> puce flash inconnue. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> à mesurer), la 0.7 la relecture du morceau par USB, la 0.8 son envoi depuis un ordinateur. La 0.9 retire SAMPLE, remplace BRUIT
+> par NOISE et ajoute FM4 (de SLOOP), l'arpégiateur à 15 modes, les effets INSERT et le MIDI par canaux ; elle n'est
+> pas encore essayée sur un FM-1. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
 > avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
 
 | | | |
@@ -35,15 +37,18 @@ dans [Ce que Gabare ajoute](#ce-que-gabare-ajoute).
 
 | | KAWA 0.10 | Gabare | Depuis |
 | --- | --- | --- | --- |
-| Moteurs | 6 : CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE | 15 : en plus ANALOG, PHASE, LOFI, VOIX, TRIO, ORGUE, PHYS (Skiff), CORDE, ADD (JIANT), avec 110 sons d'usine ; la page SON dessine le moteur et ses 8 réglages | 0.1 (CORDE, ADD : 0.3) |
+| Moteurs | 6 : CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE | 15 : CARRÉ, ONDE, FM, KIT de KAWA ; ANALOG, PHASE, LOFI, VOIX, TRIO, ORGUE, PHYS (Skiff) ; CORDE, ADD (JIANT) ; **NOISE** (« BRUIT » à l'écran) et **FM4** (SLOOP), avec 149 sons d'usine ; la page SON dessine le moteur et ses 8 réglages | 0.1 (CORDE, ADD : 0.3 ; NOISE, FM4 : 0.9) |
+| SAMPLE | le moteur SAMPLE, ses 6 breaks, 4 emplacements de samples à soi, l'édition du sample et ses tranches | **retiré** (0.9) : ~200 Ko de moins ; un ancien morceau ouvre ses pistes SAMPLE sur le kit PERCUS et son BRUIT sur NOISE | 0.9 |
 | Charge | la FM sur une piste | la FM sur une piste, **PHYS sur quatre au plus** | 0.2 |
-| Arpège | l'effet de case ARP | en plus, un **arpégiateur au clavier** : la page ARPÈGE (**SCL** : GAMME → ARPÈGE → MAGIE), qui s'écrit en REC | 0.3 |
+| Arpège | l'effet de case ARP | en plus, un **arpégiateur au clavier** : la page ARPÈGE (**SCL** : GAMME → ARPÈGE → ARPÈGE 2 → MAGIE), qui s'écrit en REC ; ses **15 modes** (ceux de SLOOP, 0.9), son swing, sa chance, la tenue du clavier | 0.3 |
+| Effet d'une piste | AUCUN, FILT BAS, FILT HAU, PASS BND, DISTO, ECRASE, DECIME, ANNEAU, TREMOLO, WAH | en plus les **INSERT** de SLOOP : DOUCE, DURE, PLIE, FUZZ, PHASER, FLANGER, CHORUS (sur l'effet master aussi) | 0.9 |
+| MIDI en entrée | l'horloge ; les notes sur la piste du curseur, par USB | en plus la **prise MIDI IN** du FM-1, les **canaux 1 à 6 sur les pistes 1 à 6** (OPTIONS), les CC (volume, pano, effet, enveloppe, envois, glissé, sustain), Program Change, pitch bend | 0.9 |
 | Accords | une note par piste | l'effet de case **ACC** : jusqu'à 4 notes ensemble, sur CARRÉ, ONDE, FM, ANALOG, PHASE, LOFI, TRIO | 0.6 |
 | Piste FM (**SON FM**) | les 12 sons FM de KAWA | en plus les **128 voix d'origine du FM-1** (0.5) et les 32 voix d'une **banque DX7** envoyée (0.3), gardée dans la flash | 0.3 |
 | Morceau par USB | — | relu par l'ordinateur (0.7), reçu de l'ordinateur à la place de celui en mémoire (0.8) | 0.7 |
 | Démarrage | KAWA | GABARE, puis KAWA by Omnipotard et les moteurs de Skiff et de JIANT | 0.1 |
 | Paquet | `kawa-X.Y.fwsc`, identité `FM-1_957` | `gabare-X.Y.fwsc`, identité `FM-1_947` | 0.1 |
-| Puce flash | les deux du FM-1 (depuis KAWA 0.8) : la Puya P25Q80 des premiers, l'UC25HQ80 de ceux vendus depuis fin 2026 ; une autre : rien n'est écrit, ni sauvegarde ni mise à jour | de même, et sur une puce inconnue l'envoi de samples et de banque DX7 est refusé aussi | 0.9 |
+| Puce flash | les deux du FM-1 (depuis KAWA 0.8) : la Puya P25Q80 des premiers, l'UC25HQ80 de ceux vendus depuis fin 2026 ; une autre : rien n'est écrit, ni sauvegarde ni mise à jour | de même, et sur une puce inconnue l'envoi de banque DX7 est refusé aussi | 0.9 |
 
 ### Par USB : les commandes SysEx en plus
 
@@ -52,7 +57,8 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
 
 | Commande | Ce qu'elle fait | Depuis |
 | --- | --- | --- |
-| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8), si sa puce flash est connue (0.9) | 0.1 |
+| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8), si sa puce flash est connue (0.9) ; 0 emplacement de sample (0.9) | 0.1 |
+| 2 à 6 (samples de KAWA) | répondent « mauvais arguments » : SAMPLE est retiré | 0.9 |
 | 16, 17, 18 DX BEGIN, WRITE, END | écrire une banque DX7 de 32 voix dans la flash (séquenceur arrêté ; contrôle CRC) | 0.3 |
 | 19 DX READ | relire la banque, 64 octets à la fois | 0.4 |
 | 20 PRJ READ | relire le morceau en mémoire, sauvé ou non, 64 octets à la fois (même pendant la lecture) | 0.7 |
@@ -63,7 +69,8 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
 - [index.html](index.html) : la page d'installation, en français. C'est l'installeur de KAWA, qui prend le
   `gabare-*.fwsc` le plus récent que nomme `install/SHA256SUMS` ; les lanceurs `INSTALL-*` aussi. Les paquets de
   KAWA ne sont plus dans `install/`.
-- [dx7.html](dx7.html) : envoyer une banque DX7 (0.3). [samples.html](samples.html) est l'outil de KAWA, inchangé.
+- [dx7.html](dx7.html) : envoyer une banque DX7 (0.3). L'outil de samples de KAWA (`samples.html`) ne sert plus : Gabare
+  n'a plus de samples (0.9).
 - [aide.html](aide.html) : l'aide-mémoire des gestes de Gabare, à imprimer (0.6).
 - Fm1Studio joue les sons de Gabare sur le PC (avec le code de Gabare), envoie la banque DX7, importe le morceau du
   FM-1 (0.7) et lui envoie le sien (0.8).
@@ -74,8 +81,8 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
 - Les projets gardent le format de KAWA (format 5) : les projets, samples et réglages de KAWA se lisent sous Gabare.
   Un morceau qui se sert d'un moteur de Gabare, de l'effet ACC ou des voix d'origine ne sonne pas pareil sous KAWA,
   qui ne les a pas.
-- L'[émulateur web](emulator/index.html) fait tourner Gabare (0.8) ; les messages de son outil de samples parlent encore de
-  KAWA. Le [manuel](manual/fr.html) est celui de KAWA : il ne montre pas ce que Gabare ajoute.
+- L'[émulateur web](emulator/index.html) fait tourner Gabare ; son panneau de samples ne fait plus rien (0.9). Le
+  [manuel](manual/fr.html) est celui de KAWA : il ne montre pas ce que Gabare ajoute, et parle encore de SAMPLE.
   [README.es.md](README.es.md) est encore le texte de KAWA seul.
 - Le site (GitHub Pages) se publie depuis la branche `gabare`, et une étiquette de version (`v0.8`) fait construire et
   signer `gabare-0.8.fwsc` par la procédure de The Firmware Hub.
@@ -90,7 +97,7 @@ fois, autour du moteur choisi.
 
 | Moteur | D'où | Le son | Sons d'usine |
 | --- | --- | --- | --- |
-| CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE | KAWA | ceux de KAWA (voir son manuel) | ceux de KAWA |
+| CARRÉ, ONDE, FM, KIT | KAWA | ceux de KAWA (voir son manuel) | ceux de KAWA |
 | ANALOG | Skiff | soustractif : deux oscillateurs, un filtre résonant | 25 |
 | PHASE | Skiff | distorsion de phase, à la Casio CZ | 9 |
 | LOFI | Skiff | ondes 8 bits, très léger | 8 |
@@ -100,39 +107,75 @@ fois, autour du moteur choisi.
 | PHYS | Skiff | modèles physiques : modal, corde, membrane, cordes sympathiques | 11 |
 | CORDE | JIANT | corde pincée, frappée ou frottée (Karplus-Strong), larsen de guitare | 16 |
 | ADD | JIANT | additif : neuf partiels (harmoniques, impairs, cloche, barre, membrane…) | 16 |
+| BRUIT (NOISE) | SLOOP | bruit analogique, crépitements, registre à décalage façon console, mode métallique accordé ; sa couleur (du blanc au brun), un filtre résonant, une dérive, un écrasement | 17 : les 6 du BRUIT de KAWA (CHARLEY, CAISSE, METAL…) refaits, et WIND, RAIN, OCEAN, VINYL, HISS, RISER… |
+| FM4 (DIGITAL) | SLOOP | FM à 4 opérateurs : 8 algorithmes, les rapports des opérateurs 2 à 4, l'indice, son déclin, la réinjection | 22 : RHODES, WURLI, CLAV, MARIMBA, GLOCKEN, FM BASS… |
 
-- Les **8 boutons** d'un moteur de Skiff ou de JIANT sont ses réglages à lui, sur SON 1 et SON 2 (K1 à K4), sous
+- Les **8 boutons** d'un moteur de Skiff, de JIANT ou de SLOOP sont ses réglages à lui, sur SON 1 et SON 2 (K1 à K4), sous
   leur nom d'origine. La page SON dessine le moteur : son nom et ses 8 réglages en barres.
 - Tout le reste de KAWA s'applique autour d'eux : la note, le glissé, l'arpège, la table et le LFO font la hauteur ;
   l'enveloppe, le volume, les effets et les envois suivent. **ENV>EFF** ouvre aussi le filtre du moteur.
 - Une note à la fois par piste, comme dans KAWA.
 - **FM** se joue sur une piste (la règle de KAWA) et **PHYS sur quatre au plus** : sur le FM-1, trois pistes PHYS
   prennent 68 % du temps de calcul. Au-delà, PHYS est grisé dans la bande et l'écran dit « PHYS : 4 PISTES MAX ».
-  Les autres moteurs vont sur les six pistes (CORDE et ADD coûtent comme ANALOG).
+  Les autres moteurs vont sur les six pistes (CORDE et ADD coûtent comme ANALOG, BRUIT et FM4 moins).
+- **Un morceau d'avant la 0.9** s'ouvre sans surprise : une piste SAMPLE devient le kit PERCUS (ses tranches 1 à 16
+  jouent ses 16 coups), une piste du BRUIT de KAWA devient NOISE (CHARLEY, ou METAL pour le bruit métallique), son
+  enveloppe gardée. L'outil magique HACHOIR mélange maintenant les temps d'un motif, sur les pistes de batterie.
 - **CORDE**, sons FEEDBACK, SHOEGAZE, SQUEAL et EBOW : leur excitation FDBK change le rôle des boutons 4 à 8 (MOVE,
   GAIN, DIST, SPEAKR, BLOOM), mais l'écran garde les noms habituels. Une note qui s'arrête (OFF) étouffe la corde
   selon le RELEASE de la piste.
 
 ### L'arpégiateur
 
-**SCL** fait maintenant le tour **GAMME → ARPÈGE → MAGIE**. Sur la page ARPÈGE :
+**SCL** fait maintenant le tour **GAMME → ARPÈGE → ARPÈGE 2 → MAGIE**. Sur la page ARPÈGE :
 
 | Bouton | Réglage |
 | --- | --- |
-| K1 | le mode : OFF, MONTE, DESCEND, MONTE+DESC, HASARD, COMME JOUÉ |
+| K1 | le mode : OFF, MONTE, DESCEND, MONTE+DESC, HASARD, COMME JOUÉ, et depuis la 0.9 ceux de SLOOP (ci-dessous) |
 | K2 | la vitesse : 1/32, 1/16T, 1/16, 1/8T, 1/8, 1/4 |
 | K3 | les octaves : 1 à 4 |
 | K4 | la durée de chaque note : de 6 % à 94 %, puis LEGATO |
 | ARP | tenir les notes : elles restent une fois les touches lâchées, le prochain accord les remplace |
 
 - Tiens des touches (jusqu'à 8) : elles s'arpègent sur la piste choisie, depuis n'importe quelle page qui joue des
-  notes. Les pistes KIT et les tranches de sample ne s'arpègent pas.
+  notes. Les pistes KIT ne s'arpègent pas.
 - À l'arrêt, la première note part tout de suite, au tempo du morceau. Pendant la lecture, l'arpège suit les lignes
   du séquenceur, swing et groove compris, et la piste arpégée ne joue pas ses propres notes pendant ce temps.
 - **REC pendant la lecture** : chaque note de l'arpège s'écrit dans la ligne qui joue, avec un RETARD si elle tombe
   entre deux lignes. Une ligne garde une note : aux vitesses plus rapides que la ligne (1/32, 1/16T), seule la
   première de chaque ligne s'écrit. À l'arrêt avec REC, une touche s'écrit au curseur, comme d'habitude.
 - La vitesse, les octaves et la durée sont gardées à l'extinction ; le mode revient à OFF au démarrage.
+- **Les modes de SLOOP** (0.9 ; avec do mi sol tenus) : REPETE (la dernière touche, encore et encore), DESC+MONTE
+  (sol mi do mi), MONTE+8VE (do mi sol do'), CONVERGE (do sol mi, de l'extérieur vers le centre), DIVERGE (mi sol do),
+  HAUT ALTERNE (do sol mi sol : la note du haut entre les autres), BAS ALTERNE (do mi do sol), BALADE (un pas au
+  hasard vers le haut ou le bas), ACCORD (les notes tenues ensemble, jusqu'à 4, une octave plus haut à chaque pas
+  selon OCTAVES ; REC n'en écrit que la fondamentale).
+- **ARPÈGE 2** (SCL une fois de plus) : K1 le **SWING** de l'arpège (un pas sur deux plus tard, 0 à 100 : 100 fait
+  75 / 25), aussi à l'arrêt ; K2 sa **CHANCE** (chaque pas joue ou se tait, 0 à 100 %) ; K3 la **TENUE** du clavier :
+  sans arpège, une note jouée reste quand la touche est lâchée, la suivante la remplace. Le swing et la chance sont
+  gardés à l'extinction.
+
+### Les effets INSERT (0.9)
+
+L'effet de chaque piste (page EFFET, et l'effet master) a sept types de plus, ceux de SLOOP (de Felucca 1.4) :
+
+| Type | A | B |
+| --- | --- | --- |
+| DOUCE, DURE, PLIE, FUZZ | le gain (de x1 à x11) | le ton |
+| PHASER, FLANGER, CHORUS | la vitesse (de 0,02 à 5 Hz) | la profondeur |
+
+DOSAGE mêle l'effet au son. Un morceau qui s'en sert sonne sans cet effet sous une version plus ancienne.
+
+### Le MIDI (0.9)
+
+- **La prise MIDI IN** du FM-1 marche, comme l'USB (le lecteur de SLOOP).
+- **OPTIONS, K3** fait le tour de l'horloge MIDI (NON, SORTIE, ENTRÉE) puis des mêmes avec **CANAUX** : les canaux
+  1 à 6 jouent les pistes 1 à 6, les autres la piste du curseur. Sans CANAUX (CURSEUR), comme KAWA : toutes les
+  notes sur la piste du curseur.
+- **Sur la piste de la note** : CC 7 le volume, 10 le pano, 74 et 71 les réglages A et B de l'effet (la coupure et la
+  résonance d'un filtre), 73 / 75 / 72 l'attaque, le déclin et le relâché, 5 le glissé (CARRÉ, ONDE), 91 et 94 les
+  envois de réverb et d'écho, 64 la pédale de sustain ; **Program Change** : le son d'usine n° N du moteur de la
+  piste (Bank Select, CC 0, pour aller au-delà de 128) ; **pitch bend** : ± 2 demi-tons.
 
 ### Les accords : l'effet ACC
 
@@ -143,8 +186,8 @@ partent ensemble et partagent l'enveloppe, le volume et les effets de la piste (
   MIN, OCT, 5TE, SUS, 7, MA7, MI7, DIM, AUG, 2OC, AD9, TRI, BAS), jusqu'à 4 notes. Dans la case, ACC a l'icône ∞ ;
   ARP garde la sienne et joue les mêmes accords note après note.
 - L'accord tient jusqu'à la note suivante de la piste, ou un OFF. ACC et ARP vont ensemble : l'arpège déplace l'accord.
-- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), ANALOG, PHASE, LOFI,
-  TRIO. Les autres jouent la note seule : BRUIT, KIT, SAMPLE, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
+- **Les moteurs qui le jouent** : CARRÉ, ONDE, FM (et les voix d'origine du FM-1, les banques DX7), FM4, ANALOG, PHASE,
+  LOFI, TRIO. Les autres jouent la note seule : BRUIT, KIT, VOIX et PHYS (trop lourds), ORGUE, CORDE et ADD (leur
   mémoire est celle d'une seule voix).
 - **La charge** : chaque note de plus coûte presque une piste de ce moteur (estimé : ~2 % pour CARRÉ ou LOFI, ~5 % pour
   ANALOG, ~6 % pour FM, par note, à mesurer sur le FM-1 dans OPTIONS). Quand le FM-1 sature, le régulateur de KAWA

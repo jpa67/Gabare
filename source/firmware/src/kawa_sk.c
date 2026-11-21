@@ -52,6 +52,8 @@ static uint32_t sk_rng(void)
 #include "skiff/eng_phys.c"
 #include "skiff/eng_string.c"                  /* (Gabare) JIANT's STRING and ADD (ADD after WHEEL and STRING: their code) */
 #include "skiff/eng_add.c"
+#include "skiff/eng_noise.c"                   /* (Gabare 0.9) SLOOP's NOISE and DIGITAL (Felucca's) */
+#include "skiff/eng_digital.c"
 /* a track's engine memory: the biggest engine's (PHYS: one model slot, the only voice's). The engines with memory of
  * their own play v[0] only (no chord): one voice's */
 typedef union {
@@ -78,17 +80,18 @@ typedef union {
 #pragma pop_macro("CTL")
 
 /* ---- the bridge: KAWA's engine numbers from E_SK0 on are these, in this order */
-static const engine_t *const SK_ENGINES[] = {&ENG_ANALOG, &ENG_PHASE, &ENG_LOFI, &ENG_FORMANT, &ENG_TRIO, &ENG_WHEEL, &ENG_PHYS, &ENG_STRING, &ENG_ADD};
+static const engine_t *const SK_ENGINES[] = {&ENG_ANALOG, &ENG_PHASE, &ENG_LOFI, &ENG_FORMANT, &ENG_TRIO, &ENG_WHEEL, &ENG_PHYS, &ENG_STRING, &ENG_ADD,
+                                             &ENG_NOISE, &ENG_DIGITAL};   /* ((Gabare 0.9) E_NOISE, E_DIGI) */
 #define SK_N ((uint32_t)NELEM(SK_ENGINES))
 typedef char sk_engines_listed[E_N - E_SK0 == SK_N ? 1 : -1];
 
 /* each engine's level (Q4): Skiff's 11/16; (Gabare) JIANT's STRING and ADD play ~12 and ~8 dB under them (measured on
  * their factory sounds), brought up to them */
-static const uint8_t SK_GAIN[] = {11, 11, 11, 11, 11, 11, 11, 33, 22};
+static const uint8_t SK_GAIN[] = {11, 11, 11, 11, 11, 11, 11, 33, 22, 11, 11};
 typedef char sk_gains_listed[NELEM(SK_GAIN) == SK_N ? 1 : -1];
 /* (Gabare) the engines that play an ACC chord (one voice a note): ANALOG, PHASE, LOFI, TRIO; not VOICE (too heavy), nor
  * the ones with memory of their own (WHEEL, PHYS, STRING, ADD) */
-static const uint8_t SK_CHORD[] = {1, 1, 1, 0, 1, 0, 0, 0, 0};
+static const uint8_t SK_CHORD[] = {1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1};   /* ((0.9) DIGITAL: yes; NOISE: no) */
 typedef char sk_chords_listed[NELEM(SK_CHORD) == SK_N && CHORD_MAX <= NELEM(sk_trk[0].v) ? 1 : -1];
 static uint8_t sk_nv[NTRK];                     /* the voices the last note started */
 

@@ -86,7 +86,7 @@ of sound): it stops at the first integer that wraps and names the line, and chec
 edit's positions and gain, the clock in: rows within a tick of the clock, 3 to 5 ms after it in blocks of
 256 frames with 0..3 ms of jitter, and a PLAY that waits for a clock that does not come). The products that can go past 32 bits are done in 64 (one `smul` on the pi32v2; only a 64-bit
 division is not allowed). `tests/run_kits_test.sh` measures the drums (clipping, DC, the hits ending, how far
-apart the kits are), and `tests/breaks_check.py` the breaks.
+apart the kits are). ((Gabare 0.9) KAWA's breaks, `tests/breaks_check.py` and their generator are gone with SAMPLE.)
 
 `tests/run_ui_test.sh` (0.5) drives the panel as the buttons and encoders would (the firmware's own
 `ui_input`), under UBSan, and checks what the pages and the sound do: a first start (empty song, 100 BPM,
@@ -130,7 +130,6 @@ CRC16 and the same verdict for every damaged package.
 | --- | --- | --- |
 | `firmware/gen/kawa_art.h` | `tools/gen_art.py` | icons 8 x 8 and the mascot 16 x 16, drawn as text |
 | `firmware/gen/kawa_photo.h` | `tools/gen_art.py` | the boot picture, from `art/boot-dog.png`: 240 x 240, 192 colours, a byte a pixel (needs Pillow) |
-| `firmware/gen/kawa_breaks.h` | `tools/gen_breaks.py` | six breaks, synthesised, 22050 Hz, 8-bit mu-law (needs numpy; `--wav DIR` to listen; `tests/breaks_check.py` checks them) |
 | `firmware/gen/kawa_tables.h` | `tools/gen_tables.py` | fixed-point tables: pitch, envelopes, filters, the 4-bit waves |
 | `firmware/gen/felucca_font.h` | Dinghy | Terminus 8 x 16 (SIL OFL 1.1): the screen font BASE |
 | `firmware/gen/kawa_fonts.h` | `tools/gen_fonts.py` | the screen fonts DOUCE, CLAIRE and 8-BIT, from `assets/fonts/` (SIL OFL 1.1; needs Pillow) |
@@ -173,7 +172,7 @@ From this `source/` folder (none of them needs an FM-1):
 ```sh
 sh tests/run_features_test.sh      # 0.3's features through the audio interrupt (UBSan)
 sh tests/run_format_test.sh        # projects saved by 0.2 and 0.3 load as they were
-sh tests/run_kits_test.sh          # the drum kits; python3 tests/breaks_check.py: the breaks
+sh tests/run_kits_test.sh          # the drum kits
 sh tests/run_ui_test.sh            # the panel: pages, SELECT, protected sounds, undo, SENDS, holds, tools, metronome, 64 steps
 sh tests/run_stress_test.sh        # every sound and effect at the ends of the knobs (about 18 minutes of sound)
 AC79_SDK=~/fw-AC79_AIoT_SDK sh tests/run_loader_tests.sh    # the install path on the package in build/ (after ./build.sh)

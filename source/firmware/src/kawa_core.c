@@ -92,15 +92,14 @@ static uint32_t pat_head(uint32_t p) { return p && pat_linked(p - 1u) ? p - 1u :
 static int pat_same(uint32_t a, uint32_t b) { return pat_head(a) == pat_head(b); }         /* both halves of one 64-step pattern, or one */
 static int pat_in_pair(uint32_t p) { return pat_linked(p) || (p && pat_linked(p - 1u)); }
 
-/* the drum or the slice of a cell on a KIT track / a SAMPLE track in slice mode */
+/* the drum of a cell on a KIT track ((Gabare 0.9) SAMPLE's slices are gone) */
 static uint32_t cell_idx(uint32_t note) { return note - 1u; }
-/* how a track reads its notes: MIDI notes, drums 1..16, slices 1..16 */
-enum { NM_NOTE, NM_DRUM, NM_SLICE };
+/* how a track reads its notes: MIDI notes, drums 1..16 */
+enum { NM_NOTE, NM_DRUM };
 static uint32_t note_mode(uint32_t t)
 {
     uint32_t e = prj.snd[t].engine;
     if (e == E_KIT) return NM_DRUM;
-    if (e == E_SAMPLE && prj.snd[t].p[P_SMODE] == 0) return NM_SLICE;
     return NM_NOTE;
 }
 #define IS_TONAL(t) (note_mode(t) == NM_NOTE)
@@ -209,20 +208,5 @@ static uint32_t xr(uint32_t *s)
 }
 static uint32_t rnd(uint32_t n) { return n ? (xr(&rnd_main) >> 8) % n : 0u; }
 
-/* ---- user samples: four slots in flash (9 sectors each from USR_AT, kawa_edit.c), 8-bit mu-law, 22050 or
- * 11025 Hz. A slot: its header in the first 256 bytes (written last, after its CRC is checked), the sound from
- * USR_DATA. The audio interrupt reads them where they are (memory-mapped flash, as Felucca's samples) */
-#define USR_SIZE 0x9000u                        /* 36 KiB a slot */
-#define USR_DATA 0x100u
-#define USR_CAP (USR_SIZE - USR_DATA)           /* 36608 B of sound: 1.66 s at 22 kHz, 3.3 s at 11 kHz */
-#define USR_MAGIC 0x504D534Bu                   /* "KSMP" */
-typedef struct {
-    uint32_t magic, len, rate;                  /* len in samples; rate 22050 or 11025 */
-    char name[12];
-    uint32_t crc, rsv[2];                       /* crc: CRC-32 (zlib's) of the len bytes of sound */
-} usr_hdr_t;
-static usr_hdr_t usr_hdr[NUSR];                 /* main: read at boot and after an import */
-static const uint8_t *volatile usr_data[NUSR];  /* main: where each slot's sound is (0: empty) */
-static volatile uint8_t smp_kill;               /* main -> ISR: stop every sample voice (a slot is rewritten) */
 static volatile uint8_t audio_hold;             /* main: the audio interrupt renders nothing (flash is written) */
 static volatile uint32_t audio_blocks;          /* ISR: counts the blocks (the main loop waits on it) */

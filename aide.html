@@ -145,9 +145,10 @@ footer a, .card a { color: var(--river); }
 <section class="card new">
   <h2>Les 15 moteurs <small>GABARE</small></h2>
   <table>
-    <tr><td>KAWA</td><td>CARRÉ, ONDE, BRUIT, FM, KIT, SAMPLE</td></tr>
+    <tr><td>KAWA</td><td>CARRÉ, ONDE, FM, KIT</td></tr>
     <tr><td>Skiff</td><td>ANALOG, PHASE, LOFI, VOIX, TRIO, ORGUE, PHYS</td></tr>
     <tr><td>JIANT</td><td>CORDE, ADD</td></tr>
+    <tr><td>SLOOP</td><td>BRUIT (NOISE), FM4</td></tr>
   </table>
   <ul>
     <li><b>FM : une seule piste</b> à la fois (« FM : UNE SEULE PISTE »).</li>
@@ -206,10 +207,11 @@ footer a, .card a { color: var(--river); }
   <h2>L'arpégiateur au clavier <small>GABARE</small></h2>
   <ul>
     <li><span class="k">SCL</span> deux fois : la page ARPÈGE.</li>
-    <li><span class="k k1">K1</span> le mode (OFF, MONTE, DESCEND, MONTE+DESC, HASARD, COMME JOUÉ), <span class="k k2">K2</span> la vitesse (1/32 à 1/4), <span class="k k3">K3</span> les octaves, <span class="k k4">K4</span> la durée.</li>
+    <li><span class="k k1">K1</span> le mode (OFF, MONTE, DESCEND, MONTE+DESC, HASARD, COMME JOUÉ, REPETE, DESC+MONTE, MONTE+8VE, CONVERGE, DIVERGE, HAUT ALTERNE, BAS ALTERNE, BALADE, ACCORD), <span class="k k2">K2</span> la vitesse (1/32 à 1/4), <span class="k k3">K3</span> les octaves, <span class="k k4">K4</span> la durée.</li>
     <li>Tiens des touches (jusqu'à 8) : elles s'arpègent sur la piste choisie, au tempo.</li>
     <li><span class="k">ARP</span> (sur cette page) : garde les notes une fois lâchées.</li>
     <li><span class="k">REC</span> pendant la lecture : l'arpège s'écrit dans le motif.</li>
+    <li><span class="k">SCL</span> encore : ARPÈGE 2, <span class="k k1">K1</span> swing, <span class="k k2">K2</span> chance, <span class="k k3">K3</span> tenue du clavier.</li>
   </ul>
 </section>
 
@@ -236,13 +238,11 @@ footer a, .card a { color: var(--river); }
     <li><b>CHN</b> chance : une fois sur N</li>
     <li><b>RET</b> retarde la note dans la ligne</li>
     <li><b>CUT</b> coupe la note dans la ligne</li>
-    <li><b>ENV</b> tranche de break à l'envers</li>
     <li><b>HAU</b> ±12 demi-tons pour cette note</li>
     <li><b>FOR</b> forme d'onde de cette note</li>
     <li><b>ECR</b> écrase les bits</li>
     <li><b>VOL</b> glissé de volume sur la ligne</li>
     <li><b>PAN</b> pano de cette note</li>
-    <li><b>DEP</b> départ plus loin dans le sample</li>
     <li><b>SAU</b> saut : la suite reprend à la ligne N</li>
     <li><b>FIN</b> le motif finit après cette ligne</li>
     <li><span class="tag">ACC</span> accord, ses notes ensemble</li>
@@ -251,9 +251,9 @@ footer a, .card a { color: var(--river); }
 
 <section class="card wide">
   <h2>La MAGIE</h2>
-  <p class="note"><span class="k">SCL</span> trois fois avec Gabare (GAMME, ARPÈGE, MAGIE). Une touche blanche lance l'outil ; <span class="k k1">K1</span> sa force, <span class="k k2">K2</span> le dé, <span class="k k3">K3</span> la piste ou le motif. Tout s'annule (<span class="k">SAVE</span> tenu + <span class="k">OCT−</span>).</p>
+  <p class="note"><span class="k">SCL</span> quatre fois avec Gabare (GAMME, ARPÈGE, ARPÈGE 2, MAGIE). Une touche blanche lance l'outil ; <span class="k k1">K1</span> sa force, <span class="k k2">K2</span> le dé, <span class="k k3">K3</span> la piste ou le motif. Tout s'annule (<span class="k">SAVE</span> tenu + <span class="k">OCT−</span>).</p>
   <ul class="cols2">
-    <li>1 HACHOIR (break)</li><li>2 BEAT</li><li>3 MÉLODIE</li><li>4 BASSE</li>
+    <li>1 HACHOIR (temps)</li><li>2 BEAT</li><li>3 MÉLODIE</li><li>4 BASSE</li>
     <li>5 ARPÈGE</li><li>6 EUCLIDE</li><li>7 VARIER</li><li>8 ROULÉS</li>
     <li>9 NUANCES</li><li>10 DOUBLER</li><li>11 DÉCALER</li><li>12 CLONER</li>
     <li>13 TRANSPO</li><li>14 COPIER</li><li>15 COLLER</li><li>16 EFFACER</li>
@@ -288,7 +288,7 @@ footer a, .card a { color: var(--river); }
 </div>
 
 <footer>
-  <p>Gabare : <a href="index.html">l'installer</a> · <a href="dx7.html">envoyer une banque DX7</a> · <a href="samples.html">envoyer des samples</a> ·
+  <p>Gabare : <a href="index.html">l'installer</a> · <a href="dx7.html">envoyer une banque DX7</a> ·
   <a href="manual/fr.html">le manuel de KAWA</a>. GPL-3.0.</p>
 </footer>
 </div>

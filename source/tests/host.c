@@ -69,7 +69,15 @@ static int settings_load(void *p, uint32_t n)   /* (as platform.c: the length sa
     return 0;
 }
 static int settings_save(const void *p, uint32_t n) { host_settings[0] = 1; host_settings[1] = (uint8_t)n; memcpy(host_settings + 4, p, n); return 0; }
-static int midi_get(uint8_t *st, uint8_t *d1, uint8_t *d2) { (void)st; (void)d1; (void)d2; return 0; }
+static uint32_t host_midi_in[64], hmi_r, hmi_w;   /* ((Gabare 0.9) MIDI in for the tests: st | d1 << 8 | d2 << 16) */
+static int midi_get(uint8_t *st, uint8_t *d1, uint8_t *d2)
+{
+    uint32_t m;
+    if (hmi_r == hmi_w) return 0;
+    m = host_midi_in[hmi_r++ % 64u];
+    *st = (uint8_t)m; *d1 = (uint8_t)(m >> 8); *d2 = (uint8_t)(m >> 16);
+    return 1;
+}
 static uint32_t host_midi_out[3];               /* MIDI out: counts of clock ticks, starts, stops (tests) */
 static void midi_send(uint32_t st, uint32_t d1, uint32_t d2)
 {

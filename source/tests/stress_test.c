@@ -247,43 +247,29 @@ int main(void)
     }
     prj.grv.on = 0;
     printf("11. the groove at 1 and 12 ticks, 40 and 300 BPM: ok\n");
-    /* 12. sample edits: no width, x16, reversed, slices piled up; a full-scale sound of the user's, DRIVE 15 */
+    /* 12. (Gabare 0.9) the INSERT types (SLOOP's) at their ends, mixed in full, on loud tracks; and FM4, NOISE */
     {
-        static uint8_t loud[USR_CAP];
-        uint32_t j;
-        for (j = 0; j < USR_CAP; j++) loud[j] = (uint8_t)((j / 3u) & 1u ? 0x00u : 0x80u);   /* full scale both ways */
-        usr_put(0, loud, USR_CAP, 22050, "LOUD");
-        for (d = 0; d < 6u; d++) {
-            sedit_t *se = &prj.sed[5];
-            prj_new();
-            sound_preset(5, preset_named(E_SAMPLE, d < 3u ? (int32_t)BRK_DEMO : (int32_t)BRK_N));
-            prj.snd[5].p[P_SDRIVE] = 15;
-            prj.snd[5].p[P_VOL] = 15;
-            prj.snd[5].p[P_SMODE] = (int8_t)(d & 1u);
-            prj.snd[5].p[P_FIT] = 1;
-            se->norm = 1;
-            se->gain = 4096;
-            se->rev = (uint8_t)(d % 3u != 0u);
-            se->manual = (uint8_t)(d >= 2u);
-            se->start = (uint16_t)(d == 1u ? 65535u - 512u : 0u);
-            se->end = (uint16_t)(d == 1u ? 65535u : d == 4u ? 600u : 65535u);
-            for (j = 0; j < 16u; j++) se->sl[j] = (uint16_t)(d == 2u ? 30000u : j * 4096u);
-            sed_fix(se);
-            se->gain = 4096;                    /* (x16: more than any sound needs) */
-            prj.tbl[5].on = 1;
-            prj.tbl[5].speed = 1;
-            prj.tbl[5].len = 2;
-            prj.tbl[5].s[0].tr = 24;
-            prj.tbl[5].s[1].tr = -24;
-            prj.tbl[5].s[1].fx = TB_HIT;
-            for (j = 1; j <= 16u; j++) {
-                ev_push(EV_ON, 5, d & 1u ? 36u + j * 4u : j, 15, j & 1u ? FX_PITCH : FX_OFS, j & 1u ? 12u : 15u);
-                render(6);
+        uint32_t j, ty;
+        for (ty = FXT_SOFT; ty < FXT_N; ty++)
+            for (d = 0; d < 4u; d++) {
+                prj_new();
+                for (t = 0; t < NTRK; t++) {
+                    if (t == 3u) sound_preset(t, preset_named(E_DIGI, 4));
+                    prj.snd[t].p[P_VOL] = 15;
+                    prj.snd[t].p[P_FXT] = (int8_t)ty;
+                    prj.snd[t].p[P_FXA] = (int8_t)(d & 1u ? 15 : 0);
+                    prj.snd[t].p[P_FXB] = (int8_t)(d & 2u ? 15 : 0);
+                    prj.snd[t].p[P_FXM] = 15;
+                }
+                prj.mfx[0] = (int8_t)ty; prj.mfx[1] = 15; prj.mfx[2] = 15; prj.mfx[3] = 15;
+                for (j = 1; j <= 8u; j++) {
+                    for (t = 0; t < NTRK; t++) ev_push(EV_ON, t, IS_TONAL(t) ? 24u + j * 9u : j, 15, 0, 0);
+                    render(8);
+                }
+                quiet_all();
             }
-            quiet_all();
-        }
     }
-    printf("12. sample edits: no width, x16, reversed, piled-up slices, a full-scale sound, DRIVE 15: ok\n");
+    printf("12. the INSERT types (SOFT .. CHORUS) at their ends on six loud tracks and the master: ok\n");
     /* 13. the MIDI clock in: 300 BPM, 40 BPM, 50 ticks at once, two seconds without, START in the middle */
     prj_demo();
     loud_faders();
@@ -369,7 +355,7 @@ int main(void)
     /* 8. everything ends: no voice left on once all is stopped */
     render(400);
     for (t = 0; t < NTRK; t++)
-        if (drum[t][0].on || drum[t][1].on || smp[t][0].on || smp[t][1].on || tk[t].tb_run) {
+        if (drum[t][0].on || drum[t][1].on || tk[t].tb_run) {
             printf("FAIL  8. a voice of track %u never ends\n", t + 1u);
             return 1;
         }

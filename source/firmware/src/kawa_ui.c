@@ -60,7 +60,6 @@ static uint32_t prev_keys;
 static uint8_t key_note[27], key_trk[27];
 static int8_t grid_held = -1;                   /* a step held on the grid (its knobs edit it) */
 static uint8_t grid_edit;                       /* the held step was edited (its release keeps it) */
-static uint8_t wv_peak[224], wv_src = 0xFF;     /* the sample's outline (SOUND page), made when it changes */
 static uint8_t names_ok[NSLOT];
 static char slot_name[NSLOT][16];
 static uint32_t ui_frame_ms;
@@ -69,8 +68,9 @@ static char knob_lab[4][24];                    /* what each knob does on this p
 static char help_lab[4][24];
 #define MASTER NTRK                             /* MIX: the strip after the tracks */
 
-static struct { uint8_t lang, theme; int8_t oct; uint8_t clock, font, metro, mvol, arate, aoct, agate; } set;   /* ((Gabare)
-                                                                                          * arate aoct agate: the arpeggiator's) */   /* kept in the settings sector (0.2 kept
+static struct { uint8_t lang, theme; int8_t oct; uint8_t clock, font, metro, mvol, arate, aoct, agate, aswing, achance, mchan; } set;
+                                                                                          /* ((Gabare) arate aoct agate: the
+                                                                                          * arpeggiator's; (0.9) aswing achance: ARPEGGIO 2's) */   /* kept in the settings sector (0.2 kept
                                                                                           * the first four bytes, 0.4 five) */
 static uint8_t set_dirty;
 static uint32_t set_ms;
@@ -141,14 +141,6 @@ static void note_text(uint32_t t, uint32_t note, char *s, int wide)
     /* a tuned-up drum or slice (a black key, notes 17..32): wide, its code or number ends in +; narrow, the same text
      * as the drum or slice it comes from (the column draws it in gold, note_up) */
     if (nm == NM_DRUM) { str_cat(s, drum_code(t, cell_idx(note) & 15u, wide)); if (wide && cell_idx(note) >= 16u) { while (*s) s++; s[-1] = '+'; } return; }
-    if (nm == NM_SLICE) {
-        char *p = s;
-        while (*p) p++;
-        if (wide && cell_idx(note) < 16u) *p++ = 'S';
-        fmt_u(p, (cell_idx(note) & 15u) + 1u, 2);
-        if (wide && cell_idx(note) >= 16u) str_cat(p, "+");
-        return;
-    }
     if (wide) {
         s = str_cat(s, NOTE_NAME[note % 12u]);
         fmt_u(s, note / 12u ? note / 12u - 1u : 0u, 1);
@@ -173,12 +165,12 @@ static void fx_text(uint32_t t, uint32_t fx, uint32_t fxv, char *s)   /* a trick
     case FX_REV: str_cat(s, "<<"); break;
     case FX_HOP: fmt_u(s, (fxv & 31u) + 1u, 0); break;     /* the row it goes to */
     case FX_SHAPE: {
-        uint32_t e = ENG(t), n = e == E_PULSE ? 5u : e == E_WAVE ? 8u : e == E_NOISE ? 2u : 0u, i;
-        const char *const *l = e == E_PULSE ? L_DUTY : e == E_WAVE ? L_WAVE : L_NOISE;
+        uint32_t e = ENG(t), n = e == E_PULSE ? 5u : e == E_WAVE ? 8u : 0u, i;
+        const char *const *l = e == E_PULSE ? L_DUTY : L_WAVE;
         const char *w;
         if (!n) { fmt_u(s, fxv, 0); break; }
-        w = l[lang * n + (e == E_PULSE ? (fxv < 4u ? fxv : 4u) : e == E_NOISE ? (fxv ? 1u : 0u) : fxv % n)];
-                                                /* (what plays: PULSE 4 and over is PWM, NOISE any but 0 the metal) */
+        w = l[lang * n + (e == E_PULSE ? (fxv < 4u ? fxv : 4u) : fxv % n)];
+                                                /* (what plays: PULSE 4 and over is PWM) */
         for (i = 0; i < 3u && w[i]; i++) s[i] = w[i];
         s[i] = 0;
         break;
@@ -194,24 +186,12 @@ static void trk_name(uint32_t t, char *s)      /* "1 PULSE" */
     s[2] = 0;
     str_cat(s, ENGINE_NAME[ENG(t)]);
 }
-static void src_text(int32_t v, char *s)        /* a SAMPLE's source: a break, or a slot of the user's */
-{
-    const char *n;
-    s[0] = 0;
-    if (v < (int32_t)BRK_N) { str_cat(s, BRK_NAME[v < 0 ? 0 : v]); return; }
-    n = usr_name((uint32_t)v - BRK_N);
-    if (n) { str_cat(s, n); return; }
-    str_cat(s, TR("MON ", "MY ", "MI "));
-    fmt_u(s + str_len(s), (uint32_t)v - BRK_N + 1u, 0);
-    str_cat(s, " -");
-}
 static const uint16_t ENV_MS[16] = {0, 2, 5, 10, 20, 35, 50, 80, 120, 180, 250, 350, 500, 800, 1200, 2000};
 static void param_text(const pdesc_t *d, int32_t v, char *s, int dec)
 {
     s[0] = 0;
     if (d->kind == K_LIST || d->kind == K_NAMES) str_cat(s, pd_value(d, v));
     else if (d->kind == K_SIGN) fmt_s(s, v);
-    else if (d->kind == K_SRC) src_text(v, s);
     else if (d->kind == K_MS) {
         uint32_t ms = ENV_MS[v & 15] * (dec ? 2u : 1u);
         if (ms >= 1000u) { char *p = fmt_u(s, ms / 1000u, 0); *p++ = '.'; p = fmt_u(p, ms / 100u % 10u, 0); str_cat(p, "S"); }
@@ -258,7 +238,7 @@ static int quiet(void)                          /* nothing sounds (the flash can
     uint32_t t;
     for (t = 0; t < NTRK; t++)                  /* (a KIT or slice track sounds through its drum or sample voices: its */
         if ((note_mode(t) == NM_NOTE && (tk[t].stage || tk[t].amp)) ||   /* envelope may hold, nothing is heard) */
-            drum[t][0].on || drum[t][1].on || smp[t][0].on || smp[t][1].on)
+            drum[t][0].on || drum[t][1].on)
             return 0;
     return !fmn[0].live && !fmn[1].live;
 }
@@ -684,25 +664,6 @@ static void draw_grid(void)
 }
 
 /* ---- SOUND */
-static void make_peaks(uint32_t src)
-{
-    const uint8_t *d;
-    uint32_t len, rate, x;
-    if (src == wv_src) return;
-    wv_src = (uint8_t)src;
-    memset(wv_peak, 0, sizeof wv_peak);
-    if (!smp_source(src, &d, &len, &rate)) return;
-    for (x = 0; x < 224u; x++) {
-        uint32_t a = x * len / 224u, z = (x + 1u) * len / 224u, m = 0;
-        for (; a < z; a++) {
-            int32_t v = BRK_ULAW[d[a]];
-            uint32_t av = (uint32_t)(v < 0 ? -v : v);
-            if (av > m) m = av;
-        }
-        wv_peak[x] = (uint8_t)(m >> 9);
-    }
-}
-
 static void draw_wave(int32_t x0, int32_t y0, int32_t w, int32_t h, uint32_t e, uint32_t sh, uint16_t col)
 {
     int32_t x, py = 0, mid = y0 + h / 2;
@@ -731,11 +692,12 @@ static void draw_fx_curve(int32_t x0, int32_t y0, int32_t w, int32_t h, const in
         case FXT_LPF: v = f <= c ? 600 + (f == c ? b * 30 : 0) : 600 - (f - c) * 160; break;
         case FXT_HPF: v = f >= c ? 600 + (f == c ? b * 30 : 0) : 600 - (c - f) * 160; break;
         case FXT_BPF: case FXT_WAH: v = 900 - (f > c ? f - c : c - f) * (130 + b * 8); break;
-        case FXT_DIST: { int32_t in = (x * 2000 / w) - 1000; v = sat(in * (1 + a * 2) * 16) / 33; v = 500 + v / 2; break; }
+        case FXT_DIST: case FXT_SOFT: case FXT_HARD: case FXT_FOLD: case FXT_FUZZ: { int32_t in = (x * 2000 / w) - 1000; v = sat(in * (1 + a * 2) * 16) / 33; v = 500 + v / 2; break; }
         case FXT_CRUSH: { int32_t st = 1 + a / 2; v = ((x * st / w) * 1000) / st; break; }
         case FXT_DECIM: { int32_t q = 2 + a; v = 500 + (sine((uint32_t)((x / q) * q) * (0xFFFFFFFFu / (uint32_t)w) * 2u) * 450 >> 15); break; }
         case FXT_RING: v = 500 + ((sine((uint32_t)x * (0xFFFFFFFFu / (uint32_t)w) * 3u) >> 8) * (sine((uint32_t)x * (0xFFFFFFFFu / (uint32_t)w) * (6u + (uint32_t)a)) >> 8)) * 450 / 16384; break;
-        case FXT_TREM: v = 500 + (sine((uint32_t)x * (0xFFFFFFFFu / (uint32_t)w) * 3u) * (b * 30) >> 15); break;
+        case FXT_TREM: case FXT_PHASER: case FXT_FLANGER: case FXT_CHORUS:
+            v = 500 + (sine((uint32_t)x * (0xFFFFFFFFu / (uint32_t)w) * 3u) * (b * 30) >> 15); break;
         default: v = 500; break;
         }
         v = clampi(v, 0, 1000);
@@ -746,14 +708,13 @@ static void draw_fx_curve(int32_t x0, int32_t y0, int32_t w, int32_t h, const in
 }
 
 /* the SOUND page's pages: the FM track has its operators too */
-static uint32_t sp_n(uint32_t t) { return ENG(t) == E_FM ? 8u : ENG(t) == E_SAMPLE ? 7u : 6u; }
+static uint32_t sp_n(uint32_t t) { return ENG(t) == E_FM ? 8u : 6u; }
 static uint32_t sp_at(uint32_t t, uint32_t i)
 {
     if (ENG(t) == E_FM) return SP_LIST_FM[i % 8u];
-    if (ENG(t) == E_SAMPLE) return SP_LIST_SMP[i % 7u];
     return SP_LIST[i % 6u];
 }
-/* EDIT goes round SOUND, SOUND 2, (OPERATOR, OP ENVELOPE | SAMPLE EDIT), EFFECT, TABLE; LFO has its own two: LFO, MODULATION.
+/* EDIT goes round SOUND, SOUND 2, (OPERATOR, OP ENVELOPE), EFFECT, TABLE; LFO has its own two: LFO, MODULATION.
  * SELECT goes along the group of the page it is on */
 static uint32_t sg_lfo(uint32_t t, uint32_t i) { uint32_t sp = sp_at(t, i); return sp == SP_LFO || sp == SP_MOD; }
 static uint32_t sg_list(uint32_t t, uint32_t lfo, uint8_t *l)   /* the group's pages (indexes into sp_at): its size */
@@ -828,116 +789,6 @@ static void draw_openv(int32_t x0, int32_t y0, int32_t w, int32_t h)   /* the se
         g_line(x - 1, py, x, y, KNOB_COL[seg]);
         g_line(x - 1, py - 1, x, y - 1, KNOB_COL[seg]);
         py = y;
-    }
-}
-
-/* ---- the sample, drawn (SOUND; SAMPLE EDIT with its markers): its outline, the edit's start and end (outside
- * them dimmed), the slices (even, or where the edit put them), what plays now */
-static uint8_t se_cur;                          /* SAMPLE EDIT: 0 the start, 1 the end, 2..16 slice 2..16 */
-static void sed_slices_px(const sedit_t *se, int32_t *sx)   /* the 16 slices' starts, 0..224 */
-{
-    uint32_t i, a = (uint32_t)se->start * 224u >> 16, b = se->end >= 65535u ? 224u : (uint32_t)se->end * 224u >> 16;
-    for (i = 0; i < 16u; i++)
-        sx[i] = se->manual ? (int32_t)((uint32_t)se->sl[i] * 224u >> 16) : (int32_t)(a + ((b - a) * i >> 4));
-}
-static void draw_smp(uint32_t t, uint16_t col, int edit)
-{
-    const int8_t *p = prj.snd[t].p;
-    const sedit_t *se = &prj.sed[t];
-    uint32_t src = (uint32_t)clampi(p[P_SRC], 0, BRK_N + NUSR - 1), x, playing = 999, i, k = 0, slices = p[P_SMODE] == 0;
-    const smpv_t *v = smp[t][0].on ? &smp[t][0] : smp[t][1].on ? &smp[t][1] : 0;
-    const uint8_t *d;
-    uint32_t len = 1, rate;
-    int32_t sx[16], a = (int32_t)((uint32_t)se->start * 224u >> 16), b = se->end >= 65535u ? 224 : (int32_t)((uint32_t)se->end * 224u >> 16);
-    make_peaks(src);
-    if (!smp_source(src, &d, &len, &rate)) {
-        g_text_c(120, 84, TR("EMPLACEMENT VIDE", "EMPTY SLOT", "RANURA VACIA"), C_FAINT, T_CROP | T_BOLD);
-        g_text_c(120, 102, TR("GLISSE UN SON DANS", "DROP A SOUND ON THE", "SUELTA UN SONIDO EN"), C_FAINT, T_CROP);
-        g_text_c(120, 116, TR("L'EMULATEUR", "EMULATOR", "EL EMULADOR"), C_FAINT, T_CROP);
-        return;
-    }
-    sed_slices_px(se, sx);
-    if (v) playing = (v->pos >> 16) * 224u / len;
-    for (x = 0; x < 224u; x++) {
-        int32_t h = wv_peak[x] * 34 / 64, in = (int32_t)x >= a && (int32_t)x < b;
-        while (k < 15u && (int32_t)x >= sx[k + 1u]) k++;
-        g_rect(8 + (int32_t)x, 99 - h, 1, h * 2 + 1, x == playing ? C_WHITE :
-               !in ? g_mix(C_BG2, col, 50) : g_mix(C_BG2, col, slices && (k & 1u) ? 210 : 150));
-    }
-    if (slices)
-        for (i = 0; i < 16u; i++) {
-            int sel = edit && se_cur >= 2u && i == se_cur - 1u;
-            g_rect(8 + sx[i], 60, sel ? 2 : 1, 78, sel ? KNOB_COL[0] : C_RULE);
-            if (src < BRK_N && !se->manual && se->start == 0u && se->end >= 65535u) {   /* (the break's own beats) */
-                if (BRK_TAG[src][i] & 1u) g_rect(8 + sx[i] + 3, 134, 4, 4, RGB(255, 140, 60));
-                if (BRK_TAG[src][i] & 2u) g_rect(8 + sx[i] + 8, 134, 4, 4, C_WHITE);
-            }
-            if (edit && sel) {
-                char n[4];
-                fmt_u(n, i + 1u, 0);
-                g_text(8 + sx[i] + 3, 59, n, KNOB_COL[0], T_CROP | T_BOLD);
-            }
-        }
-    if (edit || se->start || se->end < 65535u) {   /* the start and the end */
-        g_rect(8 + a, 58, 2, 82, edit && se_cur == 0u ? KNOB_COL[0] : C_GOLD);
-        g_rect(6 + b, 58, 2, 82, edit && se_cur == 1u ? KNOB_COL[0] : C_GOLD);
-    }
-    if (se->rev) g_icon(222, 60, ICO_REV, C_GOLD, 1);
-    if (se->norm) g_icon(210, 60, ICO_VOL, C_GOLD, 1);
-}
-
-static void sed_mark_text(uint32_t t, char *n, char *pos)   /* SAMPLE EDIT: the marker chosen, where it is */
-{
-    const sedit_t *se = &prj.sed[t];
-    const uint8_t *d;
-    uint32_t len = 1, rate = 22050, v = se_cur == 0u ? se->start : se_cur == 1u ? se->end : se->sl[se_cur - 1u], f;
-    n[0] = 0;
-    if (se_cur == 0u) str_cat(n, TR("DEBUT", "START", "INICIO"));
-    else if (se_cur == 1u) str_cat(n, TR("FIN", "END", "FIN"));
-    else { str_cat(n, TR("TR ", "SL ", "CR ")); fmt_u(n + str_len(n), se_cur, 0); }
-    if (se_cur >= 2u && !se->manual) {          /* (even slices: where they are now) */
-        uint32_t b = se->end;
-        v = se->start + (uint32_t)(((b - se->start) * (se_cur - 1u)) >> 4);
-    }
-    if (!smp_source((uint32_t)clampi(prj.snd[t].p[P_SRC], 0, BRK_N + NUSR - 1), &d, &len, &rate)) len = 0;
-    f = se_cur == 1u && v >= 65535u ? len : sed_at(v, len);
-    str_cat(fmt_u(pos, f * 1000u / (rate ? rate : 22050u), 0), "MS");
-}
-
-static void smp_cards(uint32_t t)               /* SAMPLE EDIT's four knobs */
-{
-    const sedit_t *se = &prj.sed[t];
-    char n[12], pos[12], g[12];
-    const char *nm[4], *val[4];
-    int32_t num[4], den[4];
-    uint32_t i, v = se_cur == 0u ? se->start : se_cur == 1u ? se->end : se->sl[se_cur - 1u];
-    sed_mark_text(t, n, pos);
-    g[0] = 0;
-    if (se->norm) {
-        char *q = fmt_u(str_cat(g, "X"), se->gain / 256u, 0);
-        *q++ = '.';
-        fmt_u(q, (se->gain % 256u) * 10u / 256u, 0);
-    } else
-        str_cat(g, TR("NON", "OFF", "NO"));
-    nm[0] = TR("DEPLACE", "MOVE", "MOVER");
-    nm[1] = TR("PRECIS", "FINE", "FINO");
-    nm[2] = "NORM";                             /* (normalise: the card holds 7 letters) */
-    nm[3] = TR("ENVERS", "REVERSE", "REVES");
-    val[0] = n;
-    val[1] = pos;
-    val[2] = g;
-    val[3] = se->rev ? TR("OUI", "ON", "SI") : TR("NON", "OFF", "NO");
-    num[0] = num[1] = (int32_t)(v >> 8);
-    den[0] = den[1] = 255;
-    num[2] = se->norm;
-    num[3] = se->rev;
-    den[2] = den[3] = 1;
-    for (i = 0; i < 4u; i++) {
-        if (g_vis(144, 80)) {
-            g_rect((int32_t)i * 60, 144, 60, 80, C_BG);
-            card(i, 1 + (int32_t)i * 60, 146, 76, nm[i], val[i], num[i], den[i]);
-        }
-        hint(i, nm[i], "", val[i]);
     }
 }
 
@@ -1045,8 +896,6 @@ static void draw_table(uint32_t t, uint16_t col)
 static void draw_sound(void)
 {
     uint32_t t = trk(), e = ENG(t), i, sp = sp_at(t, snd_page), first = SP_FIRST[sp];
-    if (sp == SP_SMP && prj.snd[t].p[P_SMODE] && se_cur > 1u)
-        se_cur = 1;                             /* (notes: no slices to move) */
     const int8_t *p = prj.snd[t].p;
     uint16_t col = TRK_COL[t];
     char s[24];
@@ -1072,16 +921,20 @@ static void draw_sound(void)
     if (g_vis(40, 102)) {
         g_rect(0, 40, 240, 104, C_BG);           /* (to the cards at 144: no row left unpainted) */
         if (sp == SP_SON1) {                    /* the engines: the factory sound's (PRESETS), or ARP + PRESETS (FM: one track only) */
-            static const char *const E3[LANG_N][E_N] = {{"CAR", "OND", "BRU", "FM", "KIT", "SMP", "ANA", "PHA", "LOF", "VOI", "TRI", "ORG", "PHY", "COR", "ADD"},
-                                                         {"PUL", "WAV", "NOI", "FM", "KIT", "SMP", "ANA", "PHA", "LOF", "VOI", "TRI", "WHE", "PHY", "STR", "ADD"},
-                                                         {"PUL", "OND", "RUI", "FM", "KIT", "SMP", "ANA", "FAS", "LOF", "VOZ", "TRI", "ORG", "FIS", "CUE", "ADD"}};
-            /* (Fm1Studio) more engines than fit: seven at a time around this one, a mark where others are */
-            const uint32_t shown = E_N < 7u ? E_N : 7u, first = e < 3u ? 0u : e - 3u > E_N - shown ? E_N - shown : e - 3u;
+            static const char *const E3[LANG_N][E_N] = {{"CAR", "OND", "-", "FM", "KIT", "-", "ANA", "PHA", "LOF", "VOI", "TRI", "ORG", "PHY", "COR", "ADD", "BRU", "FM4"},
+                                                         {"PUL", "WAV", "-", "FM", "KIT", "-", "ANA", "PHA", "LOF", "VOI", "TRI", "WHE", "PHY", "STR", "ADD", "NOI", "FM4"},
+                                                         {"PUL", "OND", "-", "FM", "KIT", "-", "ANA", "FAS", "LOF", "VOZ", "TRI", "ORG", "FIS", "CUE", "ADD", "RUI", "FM4"}};
+            /* (Fm1Studio) more engines than fit: seven at a time around this one, a mark where others are; ((0.9) in
+             * ENG_ORDER) */
+            const uint32_t pe = eng_pos(e), shown = ENG_NORDER < 7u ? ENG_NORDER : 7u,
+                           first = pe < 3u ? 0u : pe - 3u > ENG_NORDER - shown ? ENG_NORDER - shown : pe - 3u;
             const int32_t step = 236 / (int32_t)shown;
+            uint32_t j;
             if (first) g_rect(0, 45, 2, 6, col);
-            if (first + shown < E_N) g_rect(238, 45, 2, 6, col);
-            for (i = first; i < first + shown; i++) {
-                int32_t x = 4 + (int32_t)(i - first) * step;
+            if (first + shown < ENG_NORDER) g_rect(238, 45, 2, 6, col);
+            for (j = first; j < first + shown; j++) {
+                int32_t x = 4 + (int32_t)(j - first) * step;
+                i = ENG_ORDER[j];
                 int on = i == e, off = !eng_free(t, i);
                 g_rrect(x, 41, step - 2, 14, on ? col : C_BG2);
                 g_icon(x + 3, 44, ENGINE_ICON[i], on ? C_INK : off ? C_RULE : col, 1);
@@ -1154,7 +1007,7 @@ static void draw_sound(void)
             }
             if (p[P_FXT] == FXT_OFF && (p[P_MENVA] || p[P_MVELA]))
                 g_text(12, 130, TR("(CHOISIS UN EFFET: EDIT)", "(PICK AN EFFECT: EDIT)", "(ELIGE UN EFECTO: EDIT)"), C_REC, T_CROP);
-        } else if (e <= E_NOISE) {
+        } else if (e <= E_WAVE) {
             draw_wave(12, 60, 120, 76, e, (uint32_t)p[P_SHAPE], col);
             draw_wave(13, 60, 120, 76, e, (uint32_t)p[P_SHAPE], col);
             g_text(150, 62, TR("ENV: ADSR", "ENV: ADSR", "ENV: ADSR"), C_FAINT, T_CROP);
@@ -1179,15 +1032,10 @@ static void draw_sound(void)
                 g_rect(x, 84, 18, 46, C_BG);
                 if (h) g_rect(x, 130 - h, 18, h, lit ? KNOB_COL[i & 3u] : C_RULE);
             }
-        } else
-            draw_smp(t, col, sp == SP_SMP);
+        }
     }
     if (sp == SP_TABLE) {                       /* the table takes the page down to the bottom line */
         draw_table(t, col);
-        return;
-    }
-    if (sp == SP_SMP) {
-        smp_cards(t);
         return;
     }
     if (sp == SP_OP || sp == SP_OPENV) {        /* an operator's four knobs */
@@ -1238,7 +1086,7 @@ static void draw_envpage(void)
         trk_name(t, s);
         g_text(16, 22, s, C_INK, T_CROP | T_BOLD);
         if (ENG(t) == E_FM) g_text(92, 22, TR("+ OPERATEURS", "+ OPERATORS", "+ OPERADORES"), C_MID, T_CROP);
-        else if (ENG(t) == E_KIT || note_mode(t) == NM_SLICE) g_text(92, 22, TR("COUPE LES COUPS", "SHAPES THE HITS", "CORTA GOLPES"), C_MID, T_CROP);
+        else if (ENG(t) == E_KIT) g_text(92, 22, TR("COUPE LES COUPS", "SHAPES THE HITS", "CORTA GOLPES"), C_MID, T_CROP);
     }
     if (g_vis(40, 124)) {
         int32_t py = by;
@@ -1699,9 +1547,16 @@ static void draw_hold(void)
 /* ---- (Gabare) ARPEGGIO: the arpeggiator (kawa_arp.c). K1 MODE, K2 RATE, K3 OCTAVES, K4 GATE; ARP: LATCH */
 static uint8_t arp_latch;                       /* the notes stay after the keys (ARP on the page) */
 static uint32_t arp_keys;                       /* the keys held that went to the arpeggiator */
-static const char *const ARP_MODES[LANG_N][AM_N] = {{"OFF", "MONTE", "DESCEND", "MONTE+DESC", "HASARD", "COMME JOUE"},
-                                                    {"OFF", "UP", "DOWN", "UP+DOWN", "RANDOM", "AS PLAYED"},
-                                                    {"OFF", "SUBE", "BAJA", "SUBE+BAJA", "AZAR", "COMO TOCADO"}};
+static const char *const ARP_MODES[LANG_N][AM_N] = {
+    {"OFF", "MONTE", "DESCEND", "MONTE+DESC", "HASARD", "COMME JOUE", "REPETE", "DESC+MONTE", "MONTE+8VE", "CONVERGE",
+     "DIVERGE", "HAUT ALTERNE", "BAS ALTERNE", "BALADE", "ACCORD"},
+    {"OFF", "UP", "DOWN", "UP+DOWN", "RANDOM", "AS PLAYED", "REPEAT", "DOWN+UP", "UP+8VA", "CONVERGE", "DIVERGE",
+     "PINKY", "THUMB", "WALK", "CHORD"},
+    {"OFF", "SUBE", "BAJA", "SUBE+BAJA", "AZAR", "COMO TOCADO", "REPITE", "BAJA+SUBE", "SUBE+8VA", "CONVERGE",
+     "DIVERGE", "MENIQUE", "PULGAR", "PASEO", "ACORDE"}};
+static uint8_t arp_sub;                         /* (0.9) ARPEGGIO 2 (SCL again): SWING, CHANCE, KEYS HOLD */
+static uint8_t kbd_hold;                        /* (0.9) KEYS HOLD: without the arpeggio, a note stays after its key */
+static uint8_t kbd_note[NTRK];                  /* (the note each track holds: KEYS HOLD off lets it go) */
 static const char *const ARP_RATES[AR_N] = {"1/32", "1/16T", "1/16", "1/8T", "1/8", "1/4"};
 static void arp_relatch(void)                   /* LATCH off: the arpeggio keeps only the keys still held */
 {
@@ -1733,6 +1588,28 @@ static void draw_arp(void)
     uint32_t i, t = trk(), n = arp_count, now = arp_now, tonal = IS_TONAL(t);
     char s[24];
     if (g_vis(20, 204)) g_rect(0, 20, 240, 204, C_BG);
+    if (arp_sub) {                              /* (0.9) ARPEGGIO 2: SWING, CHANCE, KEYS HOLD */
+        g_rrect(8, 26, g_text_w(TR("ARPEGE 2", "ARPEGGIO 2", "ARPEGIO 2")) + 16, 28, pc);
+        g_text(16, 32, TR("ARPEGE 2", "ARPEGGIO 2", "ARPEGIO 2"), C_INK, T_BOLD | T_CROP);
+        s[0] = 0;
+        str_cat(fmt_u(str_cat(s, "SWING "), arp_swing, 0), "  ");
+        str_cat(fmt_u(str_cat(s, TR("CHANCE ", "CHANCE ", "PROB ")), arp_chance, 0), "%");
+        g_text(12, 62, s, C_TXT, T_BOLD | T_CROP);
+        g_text(12, 82, kbd_hold ? TR("TOUCHES: LES NOTES RESTENT", "KEYS: THE NOTES STAY", "TECLAS: LAS NOTAS QUEDAN")
+                                : TR("TOUCHES: NOTES LIBRES", "KEYS: NOTES FREE", "TECLAS: NOTAS LIBRES"),
+               kbd_hold ? C_GOLD : C_FAINT, T_CROP);
+        g_text(8, 110, TR("SWING: 1 PAS SUR 2 EN RETARD", "SWING: EVERY 2ND STEP LATE", "SWING: 1 PASO DE 2 TARDE"), C_MID, T_CROP);
+        g_text(8, 124, TR("CHANCE: LE PAS JOUE OU NON", "CHANCE: A STEP MAY REST", "PROB: EL PASO SUENA O NO"), C_MID, T_CROP);
+        g_text(8, 138, TR("TENUE: SANS ARP, NOTE TENUE", "HOLD: NO ARP, NOTES STAY", "FIJA: SIN ARP, NOTA FIJA"), C_MID, T_CROP);
+        g_text(8, 196, TR("SCL: VERS MAGIE", "SCL: ON TO MAGIC", "SCL: A MAGIA"), C_FAINT, T_CROP);
+        fmt_u(s, arp_swing, 0);
+        hint(0, "SWING", "", s);
+        str_cat(fmt_u(s, arp_chance, 0), "%");
+        hint(1, TR("CHANCE", "CHANCE", "PROB"), "", s);
+        hint(2, TR("TENUE", "HOLD", "FIJA"), "", kbd_hold ? TR("OUI", "ON", "SI") : TR("NON", "OFF", "NO"));
+        hint(3, "-", "", "");
+        return;
+    }
     s[0] = 0;                                   /* the mode, in a pill (the large font has digits and a few letters) */
     str_cat(s, ARP_MODES[lang][arp_mode % AM_N]);
     g_rrect(8, 26, g_text_w(s) + 16, 28, arp_mode ? pc : C_BG2);
@@ -2113,12 +1990,13 @@ static void draw_opt(void)
     {                                           /* the MIDI clock: out, or in (its tempo leads) */
         char c[32];
         c[0] = 0;
-        str_cat(c, TR("HORLOGE MIDI: ", "MIDI CLOCK: ", "RELOJ MIDI: "));
+        str_cat(c, TR("MIDI HORLOGE ", "MIDI CLOCK ", "MIDI RELOJ "));
         str_cat(c, clock_name());
         if (clk_in && clk_in_tick) { str_cat(c, " "); fmt_u(c + str_len(c), bpm_now(), 0); }
-        g_text_c(120, 184, c, set.clock ? KNOB_COL[2] : C_FAINT, T_CROP);
+        str_cat(c, set.mchan ? TR("  CANAUX", "  CHANNELS", "  CANALES") : TR("  CURSEUR", "  CURSOR", "  CURSOR"));
+        g_text_c(120, 184, c, set.clock || set.mchan ? KNOB_COL[2] : C_FAINT, T_CROP);
     }
-    g_text_c(120, 197, "KAWA " APP_VER " BETA by Omnipotard", C_MID, T_CROP);
+    g_text_c(120, 197, "GABARE " APP_VER " BETA - KAWA", C_MID, T_CROP);   /* ((Gabare 0.9) its version, not KAWA's) */
     {                                           /* the audio interrupt's load (for the beta's testers) */
         char c[32];
         c[0] = 0;
@@ -2194,10 +2072,6 @@ static const help_t HELP_TABLE[LANG_N] = {
     {{"PAGE SUIVANTE", "PISTE", "LIGNE TABLE"}, {"LIGNE 0: VITESSE LONG BOUCLE", "K4 SUR LA LIGNE 0: ACTIVE", "ARP: EFFACE LE PAS"}},
     {{"NEXT PAGE", "TRACK", "TABLE ROW"}, {"ROW 0: SPEED LENGTH LOOP", "K4 ON ROW 0: ON / OFF", "ARP: CLEARS THE STEP"}},
     {{"PAG. SIGUIENTE", "PISTA", "FILA TABLA"}, {"FILA 0: VELOC LARGO BUCLE", "K4 EN LA FILA 0: ACTIVA", "ARP: BORRA EL PASO"}}};
-static const help_t HELP_SMP[LANG_N] = {
-    {{"PAGE SUIVANTE", "PISTE", "DEBUT FIN TRANCHE"}, {"K1: DEPLACE  K2: PRECIS", "K3 NORMALISE  K4 A L'ENVERS", "ARP: TRANCHES EGALES"}},
-    {{"NEXT PAGE", "TRACK", "START END SLICE"}, {"K1: MOVE  K2: FINE", "K3 NORMALISE  K4 REVERSE", "ARP: EVEN SLICES"}},
-    {{"PAG. SIGUIENTE", "PISTA", "INICIO FIN CORTE"}, {"K1: MOVER  K2: FINO", "K3 NORMALIZA  K4 AL REVES", "ARP: CORTES IGUALES"}}};
 static void draw_help(void)
 {
     static const char *const BT[12] = {"FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ", "PLAY", "REC"};
@@ -2209,7 +2083,7 @@ static void draw_help(void)
                       : help_pg == PG_FXSEQ ? &HELP_FXSEQ[lang]
                       : help_pg == PG_ARP ? &HELP_ARP[lang]
                       : help_pg == PG_SOUND && hsp == SP_TABLE ? &HELP_TABLE[lang]
-                      : help_pg == PG_SOUND && hsp == SP_SMP ? &HELP_SMP[lang] : &HELP[lang][help_pg < PG_HELP ? help_pg : 0];
+                      : &HELP[lang][help_pg < PG_HELP ? help_pg : 0];
     static const char *const ENC[3] = {"SELECT", "ALGO", "PRESETS"};
     uint32_t i;
     char s[32];
@@ -2340,6 +2214,7 @@ static void draw_all(void)
 /* ================================================================ input */
 static void set_page(uint32_t p)
 {
+    if (p != PG_ARP) arp_sub = 0;               /* ((0.9) ARPEGGIO opens on its first view) */
     if (page == PG_FX && p != PG_FX) {
         lfx_keys = 0;                           /* leaving the effects: they all stop */
         kg_keys_set(0);
@@ -2547,6 +2422,10 @@ static void key_up(uint32_t k)
         if (!arp_latch) ev_push(EV_ARP_DEL, key_trk[k], key_note[k], 0, 0, 0);
         return;
     }
+    if (kbd_hold && !arp_mode && key_trk[k] < NTRK && IS_TONAL(key_trk[k])) {   /* (0.9) KEYS HOLD: it stays */
+        kbd_note[key_trk[k]] = key_note[k];
+        return;
+    }
     ev_push(EV_OFF, key_trk[k], key_note[k], 0, 0, 0);
 }
 
@@ -2583,6 +2462,8 @@ static void cell_turn(cell_t *c, uint32_t pi, uint32_t t, uint32_t knob, int32_t
     case 2:
         v = ((int32_t)(two ? c->fx2 : c->fx) + d) % (int32_t)FX_N;
         if (v < 0) v += FX_N;
+        while (v == FX_REV || v == FX_OFS)      /* ((Gabare 0.9) a sample's REVERSE and START: SAMPLE is gone) */
+            v = (v + (d > 0 ? 1 : (int32_t)FX_N - 1)) % (int32_t)FX_N;
         if (two) { c->fx2 = (uint8_t)v; c->fxv2 = (uint8_t)FXD[v].def; }
         else { c->fx = (uint8_t)v; c->fxv = (uint8_t)FXD[v].def; }
         break;
@@ -2612,7 +2493,6 @@ static void param_turn(uint32_t t, uint32_t k, int32_t d)
     undo_push_snd(t, 1);
     prj.snd[t].p[k] = (int8_t)nv;
     if (k <= P_S7) sound_build(t);
-    if (k == P_SRC || k == P_SMODE) brush_note[t] = lane_base(t);
     if (k == P_FMPAT && ENG(t) == E_FM) { fm_patch_load(t); sound_build(t); }
     touched();
 }
@@ -2643,41 +2523,6 @@ static void table_turn(uint32_t t, uint32_t i, int32_t d)   /* TABLE: row 0 its 
         } else if (st->fx)
             st->fxv = (int8_t)clampi(st->fxv + d, TBD[st->fx].lo, TBD[st->fx].hi);
     }
-    touched();
-}
-
-static void smp_even(sedit_t *se)               /* the slices even again across the edit */
-{
-    uint32_t k;
-    se->manual = 0;
-    for (k = 0; k < 16u; k++)
-        se->sl[k] = (uint16_t)(se->start + (((uint32_t)(se->end - se->start) * k) >> 4));
-}
-static void smp_edit_turn(uint32_t t, uint32_t i, int32_t d)   /* SAMPLE EDIT: K1 K2 move the marker, K3 K4 */
-{
-    sedit_t *se = &prj.sed[t];
-    if (i < 2u) {
-        uint16_t *m;
-        if (se_cur >= 2u && !se->manual) {      /* a slice moved by hand: the others stay where they were */
-            smp_even(se);
-            se->manual = 1;
-        }
-        m = se_cur == 0u ? &se->start : se_cur == 1u ? &se->end : &se->sl[se_cur - 1u];
-        *m = (uint16_t)clampi((int32_t)*m + d * (i == 0u ? 256 : 16), 0, 65535);
-        if (se_cur >= 2u) {                     /* (between its neighbours) */
-            uint32_t lo = se->sl[se_cur - 2u], hi = se_cur < 16u ? se->sl[se_cur] : se->end;
-            *m = (uint16_t)clampi(*m, (int32_t)lo, (int32_t)hi);
-        }
-        sed_fix(se);
-        if (!sq_play) {                         /* hear it: the slice moved, or the sound from its start */
-            uint32_t n = prj.snd[t].p[P_SMODE] ? 60u : se_cur >= 2u ? se_cur : se_cur == 1u ? 16u : 1u;
-            try_note(t, n, 12, 0, 0);
-        }
-    } else if (i == 2u)
-        se->norm = (uint8_t)(d > 0);
-    else
-        se->rev = (uint8_t)(d > 0);
-    sed_normalise(t);
     touched();
 }
 
@@ -2716,7 +2561,6 @@ static void knob(uint32_t i, int32_t d)
         uint32_t sp = sp_at(t, snd_page);
         pre_cand = 0xFF;                        /* (a knob: the factory sound shown is dropped, the sound stays) */
         if (sp == SP_TABLE) { undo_push_snd(t, 1); table_turn(t, i, d); break; }
-        if (sp == SP_SMP) { undo_push_snd(t, 1); smp_edit_turn(t, i, d); break; }
         if (sp == SP_OP || sp == SP_OPENV) {    /* an operator of the FM track */
             uint32_t k = (sp == SP_OP ? OPK_LEVEL : OPK_ATT) + i;
             if (clampi(op_get(fm_op, k) + d, OPK_LO[k], OPK_HI[k]) == op_get(fm_op, k)) break;   /* (at its end: nothing to undo) */
@@ -2746,6 +2590,21 @@ static void knob(uint32_t i, int32_t d)
         else if (i == 2u) mg_scope = (uint8_t)clampi(mg_scope + d, 0, 1);
         break;
     case PG_ARP:                                /* (Gabare) MODE, RATE, OCTAVES, GATE */
+        if (arp_sub) {                          /* (0.9) ARPEGGIO 2: SWING, CHANCE, KEYS HOLD */
+            if (i == 0u) arp_swing = (uint8_t)clampi(arp_swing + d * 5, 0, 100);
+            else if (i == 1u) arp_chance = (uint8_t)clampi(arp_chance + d * 5, 0, 100);
+            else if (i == 2u) {
+                uint32_t t;
+                kbd_hold = (uint8_t)(d > 0);
+                if (!kbd_hold)
+                    for (t = 0; t < NTRK; t++)
+                        if (kbd_note[t]) { ev_push(EV_OFF, t, kbd_note[t], 0, 0, 0); kbd_note[t] = 0; }
+            }
+            set.aswing = arp_swing;
+            set.achance = arp_chance;
+            set_changed();
+            break;
+        }
         if (i == 0u) {
             arp_mode = (uint8_t)clampi(arp_mode + d, 0, AM_N - 1);
             if (arp_mode == AM_OFF) { ev_push(EV_ARP_CLR, 0, 0, 0, 0, 0); arp_keys = 0; }
@@ -2782,8 +2641,9 @@ static void knob(uint32_t i, int32_t d)
         if (i == 0u) { theme_set((uint32_t)clampi(theme + d, 0, NTHEME - 1)); set_changed(); }
         else if (i == 1u) set_lang((uint32_t)clampi(lang + d, 0, LANG_N - 1));
         else if (i == 3u) { g_font_set((uint32_t)clampi(g_font + d, 0, NFONT - 1)); set_changed(); }
-        else if (i == 2u) {                     /* OFF, OUT, IN */
-            uint32_t c = (uint32_t)clampi(set.clock + d, 0, 2);
+        else if (i == 2u) {                     /* OFF, OUT, IN; ((0.9) then the same with the notes by channel) */
+            uint32_t v = (uint32_t)clampi((int32_t)(set.clock + 3u * set.mchan) + d, 0, 5), c = v % 3u;
+            if (v / 3u != set.mchan) { set.mchan = (uint8_t)(v / 3u); set_changed(); }
             if (c != set.clock) {
                 if (sq_play) sq_req = 2;        /* (another clock: the song stops, it starts again on it) */
                 set.clock = (uint8_t)c;
@@ -3015,7 +2875,7 @@ static void tools_run(uint32_t k)
     else if (k == 4u) tool = MG_COPY;
     else if (k == 5u) tool = MG_PASTE;
     else                                        /* RANDOM: what suits the track (the whole pattern: each its own) */
-        tool = IS_TONAL(t) && ENG(t) != E_NOISE ? (is_bass(t) ? MG_BASS : MG_MELO) : note_mode(t) == NM_SLICE ? MG_CHOP : MG_BEAT;
+        tool = IS_TONAL(t) && ENG(t) != E_NOISE ? (is_bass(t) ? MG_BASS : MG_MELO) : MG_BEAT;
     if (k == 6u && mg_scope) tool = MG_MELO;
     s[0] = 0;
     str_cat(str_cat(str_cat(s, TOOL_NAMES[lang][k]), " "),
@@ -3044,7 +2904,10 @@ static void page_button(uint32_t p)             /* a page's button: open it, or 
     case PG_ENV: set_page(page == PG_ENV ? PG_MIX : PG_ENV); break;
     case PG_GRID: set_page(page == PG_GRID ? PG_TRACK : PG_GRID); break;
     case PG_MAGIC: set_page(page == PG_MAGIC ? PG_TRACK : PG_MAGIC); break;
-    case PG_SCALE: set_page(page == PG_SCALE ? PG_ARP : page == PG_ARP ? PG_MAGIC : page == PG_MAGIC ? PG_TRACK : PG_SCALE); break;   /* SCL: SCALE, (Gabare) ARPEGGIO, MAGIC */
+    case PG_SCALE:
+        if (page == PG_ARP && !arp_sub) { arp_sub = 1; g_force = 1; break; }   /* ((0.9) ARPEGGIO 2) */
+        arp_sub = 0;
+        set_page(page == PG_SCALE ? PG_ARP : page == PG_ARP ? PG_MAGIC : page == PG_MAGIC ? PG_TRACK : PG_SCALE); break;   /* SCL: SCALE, (Gabare) ARPEGGIO, MAGIC */
     case PG_SONG: set_page(page == PG_SONG ? PG_GROOVE : page == PG_GROOVE ? PG_OPT : PG_SONG); break;
     default: set_page(p); break;
     }
@@ -3111,12 +2974,6 @@ static void button_down(uint32_t b)
             undo_push_snd(trk(), 0);
             memset(&prj.tbl[trk()].s[(tb_cur - 1u) % NTSTEP], 0, sizeof(tstep_t));   /* the step cleared */
             touched();
-        } else if (page == PG_SOUND && sp_at(trk(), snd_page) == SP_SMP) {
-            undo_push_snd(trk(), 0);
-            smp_even(&prj.sed[trk()]);
-            sed_normalise(trk());
-            touched();
-            toast(TR("TRANCHES EGALES", "EVEN SLICES", "CORTES IGUALES"));
         }
         break;
     case BTN_OCT_DOWN:
@@ -3357,12 +3214,12 @@ static void preset_turn(int32_t d)
     int showing = pre_cand != 0xFF && pre_cand_t == t;
     from = showing ? pre_cand : prj.snd[t].preset;
     if (arp_held) {                             /* the engine */
-        int32_t ne = (int32_t)PRESETS[from % NPRESET].engine + (d > 0 ? 1 : -1);
+        int32_t ne = (int32_t)eng_pos(PRESETS[from % NPRESET].engine) + (d > 0 ? 1 : -1);   /* ((0.9) in ENG_ORDER) */
         uint32_t e;
         arp_turned = 1;
-        while (ne >= 0 && ne < (int32_t)E_N && !eng_free(t, (uint32_t)ne))   /* FM: one track only; (Gabare) PHYS: four */
+        while (ne >= 0 && ne < (int32_t)ENG_NORDER && !eng_free(t, ENG_ORDER[ne]))   /* FM: one track only; (Gabare) PHYS: four */
             ne += d > 0 ? 1 : -1;
-        e = (uint32_t)clampi(ne, 0, E_N - 1);
+        e = ENG_ORDER[clampi(ne, 0, (int32_t)ENG_NORDER - 1)];
         if (!eng_free(t, e)) { toast(eng_refusal(e)); return; }
         if (e == PRESETS[from % NPRESET].engine) return;
         k = preset_first(e);
@@ -3505,7 +3362,6 @@ static void ui_input(void)
             uint32_t t = trk(), sp = sp_at(t, snd_page);
             if (sp == SP_OP || sp == SP_OPENV) fm_op = (uint8_t)clampi(fm_op + d, 1, 6);
             else if (sp == SP_TABLE) tb_cur = (uint8_t)clampi(tb_cur + d, 0, NTSTEP);
-            else if (sp == SP_SMP) se_cur = (uint8_t)clampi(se_cur + d, 0, prj.snd[t].p[P_SMODE] ? 1 : 16);
             else if (sp == SP_SON1) preset_turn(d);
         } else if (page == PG_SONG) {
             if (song_cur < prj.song_len) {
@@ -3647,23 +3503,75 @@ static void clock_in(uint32_t st)
     clk_in_ticks++;
 }
 
-static void midi_in(void)                       /* USB-MIDI in: the clock; notes play the track under the cursor */
+/* (Gabare 0.9) USB-MIDI and the TRS jack in, as SLOOP (2.6, Felucca 1.1.5's CC map): NOTES CURSOR (KAWA's) plays the
+ * track under the cursor; NOTES CHANNELS, channel 1..6 its track (the others the cursor's). On the track: CC 7 volume,
+ * 10 pan, 74 / 71 the effect's A / B (a filter's cutoff / resonance), 73 / 75 / 72 attack / decay / release, 5 glide
+ * (PULSE, WAVE), 91 / 94 the reverb / echo sends, 64 the sustain pedal, 0 the bank; Program Change: the engine's
+ * factory sound n (bank x 128 + n); pitch bend +-2 semitones */
+static uint8_t midi_bank[16], midi_sus[NTRK], midi_held[NTRK];
+static int32_t midi_nth(uint32_t e, uint32_t n)   /* the engine's factory sound n (-1: none) */
+{
+    uint32_t k;
+    for (k = 0; k < NPRESET; k++)
+        if (PRESETS[k].engine == e && !n--)
+            return (int32_t)k;
+    return -1;
+}
+static void midi_cc(uint32_t t, uint32_t cc, uint32_t v)
+{
+    int8_t *p = prj.snd[t].p;
+    int32_t v15 = (int32_t)(v * 15u + 63u) / 127;
+    switch (cc) {
+    case 7: p[P_VOL] = (int8_t)v15; break;
+    case 10: p[P_PAN] = (int8_t)clampi(((int32_t)v - 64) * 7 / 63, -7, 7); break;
+    case 74: p[P_FXA] = (int8_t)v15; break;
+    case 71: p[P_FXB] = (int8_t)v15; break;
+    case 73: p[P_ATT] = (int8_t)v15; break;
+    case 75: p[P_DEC] = (int8_t)v15; break;
+    case 72: p[P_REL] = (int8_t)v15; break;
+    case 91: p[P_VERB] = (int8_t)v15; break;
+    case 94: p[P_ECHO] = (int8_t)v15; break;
+    case 5:
+        if (ENG(t) > E_WAVE) return;            /* (glide: KAWA's oscillators) */
+        p[P_GLIDE] = (int8_t)v15;
+        break;
+    case 64:                                    /* the pedal: up, the note it held goes */
+        midi_sus[t] = (uint8_t)(v >= 64u);
+        if (!midi_sus[t] && midi_held[t]) { ev_push(EV_OFF, t, midi_held[t], 0, 0, 0); midi_held[t] = 0; }
+        return;
+    default: return;
+    }
+    touched();
+}
+static void midi_in(void)                       /* the clock; the notes, CCs, programs, bends (above) */
 {
     static uint8_t midi_trk[128];               /* (the note-off goes where the note-on went) */
     uint8_t st, d1, d2;
     while (midi_get(&st, &d1, &d2)) {
-        uint32_t t = trk();
+        uint32_t ch = st & 15u, ty = st & 0xF0u, t = set.mchan && ch < NTRK ? ch : trk();
         if (st >= 0xF8u) {
             clock_in(st);
             continue;
         }
         d1 &= 127u;
-        if ((st & 0xF0u) == 0x90u && d2) {
+        d2 &= 127u;
+        if (ty == 0x90u && d2) {
             midi_trk[d1] = (uint8_t)t;
             pv_ms[t] = 0;
+            if (midi_held[t]) midi_held[t] = 0; /* (a new note: the held one is replaced) */
             ev_push(EV_ON, t, IS_TONAL(t) ? d1 : 1u + d1 % 16u, 1u + d2 / 9u, 0, 0);
-        } else if ((st & 0xF0u) == 0x80u || (st & 0xF0u) == 0x90u)
-            ev_push(EV_OFF, midi_trk[d1] < NTRK ? midi_trk[d1] : t, d1, 0, 0, 0);
+        } else if (ty == 0x80u || ty == 0x90u) {
+            uint32_t u = midi_trk[d1] < NTRK ? midi_trk[d1] : t;
+            if (midi_sus[u]) { midi_held[u] = d1; continue; }   /* (the pedal holds it) */
+            ev_push(EV_OFF, u, d1, 0, 0, 0);
+        } else if (ty == 0xB0u) {
+            if (d1 == 0u) midi_bank[ch] = d2;
+            else midi_cc(t, d1, d2);
+        } else if (ty == 0xC0u) {
+            int32_t k = midi_nth(ENG(t), (uint32_t)midi_bank[ch] * 128u + d1);
+            if (k >= 0) { sound_preset(t, (uint32_t)k); touched(); }
+        } else if (ty == 0xE0u)
+            midi_bend[t] = (int16_t)(((int32_t)((uint32_t)d2 << 7 | d1) - 8192) * 512 / 8192);   /* +-2 st, Q8 */
     }
 }
 
@@ -3691,7 +3599,7 @@ static void app_poll(void)
 }
 
 /* ================================================================ the main loop */
-static void usr_boot(void);
+static void kw_boot(void);
 static void kw_poll(void);
 static void app_init(void)
 {
@@ -3708,7 +3616,10 @@ static void app_init(void)
     set.arate = AR_16;                          /* (Gabare: what KAWA's 7 bytes leave as they are) */
     set.aoct = 1;
     set.agate = 8;
-    if ((settings_load(&set, sizeof set) == 0 || settings_load(&set, 7u) == 0 || settings_load(&set, 5u) == 0 ||
+    set.aswing = 0;                             /* ((0.9) what 0.8's ten bytes leave as they are) */
+    set.achance = 100;
+    set.mchan = 0;                              /* ((0.9) MIDI notes: the cursor's track, as KAWA) */
+    if ((settings_load(&set, sizeof set) == 0 || settings_load(&set, 10u) == 0 || settings_load(&set, 7u) == 0 || settings_load(&set, 5u) == 0 ||
          settings_load(&set, 4u) == 0) &&
         set.lang < LANG_N && set.theme < NTHEME) {   /* (5 bytes: 0.4's, before the metronome; 4: 0.2's, before the font) */
         lang = set.lang;
@@ -3721,6 +3632,9 @@ static void app_init(void)
         arp_rate = set.arate < AR_N ? set.arate : AR_16;
         arp_oct = set.aoct >= 1u && set.aoct <= 4u ? set.aoct : 1u;
         arp_gate = set.agate >= 1u && set.agate <= ARP_GATE_N ? set.agate : 8u;
+        arp_swing = set.aswing <= 100u ? set.aswing : 0u;
+        arp_chance = set.achance <= 100u ? set.achance : 100u;
+        if (set.mchan > 1u) set.mchan = 0;
         clk_in = (uint8_t)(set.clock == 2u);
     } else {
         theme_set(0);
@@ -3728,7 +3642,7 @@ static void app_init(void)
         set.lang = lang;
         set.font = g_font;
     }
-    usr_boot();                                 /* the user's samples (kawa_sysex.c) */
+    kw_boot();                                  /* the DX7 bank (kawa_sysex.c) */
     if (prj_load(0)) {
 #if defined(KAWA_WASM)
         prj_demo();                             /* the browser starts with the demo; the FM-1 still starts empty */
@@ -3815,7 +3729,7 @@ static void app_main(void)
 #if defined(KAWA_WASM)
 /* the emulator reads what the knobs do on this page (their labels under the knobs), the page, and
  * puts the user's samples in (drag and drop: the page decodes, resamples and mu-law encodes them) */
-static uint8_t w_smp_stage[USR_CAP];
+static uint8_t w_smp_stage[4];                  /* ((Gabare 0.9) SAMPLE is gone: nothing goes in) */
 static char w_smp_name[16];
 WASM_EXPORT("kawa_page") uint32_t kawa_page(void) { return page; }
 WASM_EXPORT("kawa_knob_label") const char *kawa_knob_label(uint32_t i) { return i < 4u ? knob_lab[i] : ""; }
@@ -3823,17 +3737,16 @@ WASM_EXPORT("kawa_track") uint32_t kawa_track(void) { return cur_trk; }
 WASM_EXPORT("kawa_theme") uint32_t kawa_theme(void) { return theme; }
 WASM_EXPORT("kawa_sample_buf") uint8_t *kawa_sample_buf(void) { return w_smp_stage; }
 WASM_EXPORT("kawa_sample_name") char *kawa_sample_name(void) { return w_smp_name; }
-WASM_EXPORT("kawa_sample_size") uint32_t kawa_sample_size(void) { return USR_CAP; }
+WASM_EXPORT("kawa_sample_size") uint32_t kawa_sample_size(void) { return 0; }
 WASM_EXPORT("kawa_sample_commit") void kawa_sample_commit(uint32_t slot, uint32_t len, uint32_t rate)
 {
-    usr_put(slot, w_smp_stage, len, rate, w_smp_name);
-    wv_src = 0xFF;
-    toast(TR("SAMPLE PRET !", "SAMPLE READY !", "SAMPLE LISTO !"));
+    (void)slot; (void)len; (void)rate;
+    toast(TR("PAS DE SAMPLE", "NO SAMPLES", "SIN SAMPLES"));
 }
 WASM_EXPORT("kawa_sample_slot_name") const char *kawa_sample_slot_name(uint32_t slot)
 {
-    const char *n = usr_name(slot);
-    return n ? n : "";
+    (void)slot;
+    return "";
 }
 /* the project slots live in the page's memory: the page keeps them (localStorage) and puts them back */
 WASM_EXPORT("kawa_store") uint8_t *kawa_store(void) { return &host_flash[0][0]; }

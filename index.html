@@ -132,9 +132,9 @@ dialog .yes:hover { color: #06223a; filter: brightness(1.08); }
   <p class="tagline">Firmware libre pour le M-VAVE FM-1</p>
   <h1><b>GABARE</b> — le tracker de KAWA, les moteurs de Skiff et de JIANT</h1>
   <p class="lead">Six pistes, des motifs en colonnes comme un tracker, une chaîne pour en faire un morceau, des effets en direct :
-  c'est KAWA d'Omnipotard. Gabare y ajoute sept moteurs de synthèse de Skiff et deux de JIANT, soit quinze moteurs au choix sur
-  chaque piste, un arpégiateur au clavier, des accords sur une piste, les voix d'origine du FM-1 et les banques DX7 sur
-  la piste FM.
+  c'est KAWA d'Omnipotard. Gabare y ajoute sept moteurs de synthèse de Skiff, deux de JIANT et deux de SLOOP, soit quinze
+  moteurs au choix sur chaque piste, un arpégiateur au clavier à 15 modes, des accords sur une piste, des effets, le MIDI
+  par canaux, les voix d'origine du FM-1 et les banques DX7 sur la piste FM. Il n'a plus le moteur SAMPLE de KAWA.
   Bêta, GPL-3.0.</p>
   <div class="shots">
     <figure><img src="docs/img/gabare/boot.png?v=0.9" width="480" height="480" alt="L'écran de démarrage de Gabare : GABARE, Pocket Tracker, KAWA by Omnipotard, plus les moteurs de Skiff et de JIANT"><figcaption>Le démarrage</figcaption></figure>
@@ -192,9 +192,11 @@ dialog .yes:hover { color: #06223a; filter: brightness(1.08); }
 <div class="pair">
   <section class="card" id="engines" aria-labelledby="engines-h">
     <h2 id="engines-h">Quinze moteurs</h2>
-    <p>Ceux de KAWA, sept de Skiff et deux de JIANT, avec leurs sons d'usine (une note à la fois par piste, comme dans KAWA) :</p>
+    <p>Quatre de KAWA, sept de Skiff, deux de JIANT et deux de SLOOP, avec leurs sons d'usine (une note à la fois par piste,
+    comme dans KAWA) :</p>
     <ul class="engines">
-      <li>CARRÉ, ONDE, BRUIT</li><li>FM, KIT, SAMPLE</li>
+      <li>CARRÉ, ONDE</li><li>FM, KIT</li>
+      <li>BRUIT (le NOISE de SLOOP)</li><li>FM4 (FM à 4 opérateurs)</li>
       <li>ANALOG (soustractif)</li><li>PHASE (distorsion de phase)</li>
       <li>LOFI (ondes 8 bits)</li><li>VOIX (formants)</li>
       <li>TRIO (trois oscillateurs)</li><li>ORGUE (à roues phoniques)</li>
@@ -219,11 +221,14 @@ dialog .yes:hover { color: #06223a; filter: brightness(1.08); }
 <section class="card" id="arp" aria-labelledby="arp-h">
   <h2 id="arp-h">Arpégiateur</h2>
   <p>SCL deux fois ouvre la page ARPÈGE (après GAMME). K1 choisit le mode (monte, descend, monte et descend, hasard, comme
-  joué), K2 la vitesse (1/32 à 1/4, avec les triolets), K3 le nombre d'octaves (1 à 4), K4 la durée de chaque note (jusqu'au
+  joué, et les neuf de SLOOP : répète, descend et monte, monte+octave, converge, diverge, haut ou bas alterné, balade,
+  accord), K2 la vitesse (1/32 à 1/4, avec les triolets), K3 le nombre d'octaves (1 à 4), K4 la durée de chaque note (jusqu'au
   legato). Tiens des touches : elles s'arpègent au tempo, sur la piste choisie, et sur les lignes du morceau quand il joue.
   ARP sur cette page garde les notes une fois les touches lâchées.</p>
   <p>Avec REC pendant la lecture, l'arpège s'écrit dans le motif, une note par ligne (entre deux lignes, avec un RETARD). Aux
   vitesses plus rapides que la ligne (1/32, 1/16T), seule la première note de chaque ligne s'écrit.</p>
+  <p>SCL une fois de plus : ARPÈGE 2, son swing, sa chance (un pas joue ou se tait) et la tenue du clavier (sans arpège, la
+  note reste après la touche).</p>
 </section>
 
 <section class="card" id="acc" aria-labelledby="acc-h">
@@ -231,7 +236,7 @@ dialog .yes:hover { color: #06223a; filter: brightness(1.08); }
   <p>Un tracker joue une note par piste ; avec l'effet <strong>ACC</strong> dans une case, la note joue un accord, jusqu'à
   quatre notes qui partagent l'enveloppe et les effets de la piste. Sur la page PISTES, K3 choisit l'effet (ACC, juste avant
   <code>---</code>), K4 l'accord : majeur, mineur, 7e, sus, diminué, augmenté, octaves… les 14 de l'effet ARP.</p>
-  <p>CARRÉ, ONDE, FM, ANALOG, PHASE, LOFI et TRIO jouent les accords ; les autres moteurs, la note seule. Chaque note de plus
+  <p>CARRÉ, ONDE, FM, FM4, ANALOG, PHASE, LOFI et TRIO jouent les accords ; les autres moteurs, la note seule. Chaque note de plus
   coûte presque une piste de ce moteur : quand le FM-1 sature, les notes des accords partent en premier.</p>
 </section>
 
@@ -249,7 +254,7 @@ dialog .yes:hover { color: #06223a; filter: brightness(1.08); }
     <ul>
       <li><a href="aide.html">L’aide-mémoire</a> : les gestes de Gabare sur une page, à imprimer.</li>
       <li><a href="dx7.html">Envoyer une banque DX7</a> (.syx de 32 voix) : ses voix se jouent sur la piste FM.</li>
-      <li><a href="samples.html">Envoyer tes samples</a> dans les emplacements MON 1 à MON 4 : l'outil de KAWA marche aussi avec Gabare.</li>
+      <li>Le MIDI : la prise MIDI IN du FM-1 marche, et dans OPTIONS (K3) les canaux 1 à 6 jouent les pistes 1 à 6.</li>
       <li><a href="README.fr.md">Ce que Gabare ajoute</a>, en détail, et <a href="manual/fr.html">le manuel de KAWA</a> pour tout le reste.</li>
     </ul>
   </section>

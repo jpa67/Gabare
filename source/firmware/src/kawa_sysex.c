@@ -12,6 +12,7 @@
  *   4 END slot header(32 B)          -> rc, slot         (usr_hdr_t: magic, len, rate, name, crc)
  *   5 ERASE slot                     -> rc, slot
  *   6 LIST                           -> rc, then per slot: used, rate (2 B), len (3 B), name (12 B)
+ * (Gabare 0.9) 2 to 6 answer 1 (bad arguments): SAMPLE and the user's sample slots are gone; INFO says 0 slots.
  * (Gabare) a DX7 bank (kawa_edit.c DX_AT: the 4096 bytes of a 32-voice bulk dump), the same way, bank 0 only:
  *  16 DX BEGIN 0                     -> rc, 0            (stopped only; the sector erased: no bank until END)
  *  17 DX WRITE 0 off(3 B LE) data    -> rc, 0, off       (off a multiple of 256, in order, to 4096)
@@ -37,9 +38,6 @@ enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 
 #define KW_PRJSLOT 0xEEu                        /* (Gabare 0.8) kw_slot while a song comes */
 typedef char dx_fits_the_store[DX_AT + 0x1000u <= STORE_HI && (DX_AT & 0xFFFu) == 0u ? 1 : -1];
 enum { KW_OK, KW_EARGS, KW_EBUSY, KW_EFLASH, KW_ECRC, KW_ESTATE };
-#define USR_AT_SLOT(k) (USR_AT + (uint32_t)(k) * USR_SIZE)
-typedef char usr_fits_the_store[USR_AT_SLOT(NUSR) <= STORE_HI ? 1 : -1];
-typedef char usr_slots_on_sectors[(USR_AT & 0xFFFu) == 0u && (USR_SIZE & 0xFFFu) == 0u ? 1 : -1];
 
 static uint32_t kw_pack7(const uint8_t *in, uint32_t n, uint8_t *out)   /* (as ota.c's) */
 {
@@ -111,30 +109,13 @@ static void kw_hold_wait(void)                  /* two blocks: the interrupt is 
 
 static uint32_t kw_crc(const uint8_t *p, uint32_t n) { return ~crc_step(0xFFFFFFFFu, p, n); }
 
-static int usr_check(uint32_t k, const usr_hdr_t *h)   /* a slot's header and its sound agree */
+static void kw_boot(void)                       /* at start: ((Gabare 0.9) the DX7 bank; KAWA's sample slots are gone) */
 {
-    if (h->magic != USR_MAGIC || h->len < 64u || h->len > USR_CAP || (h->rate != 22050u && h->rate != 11025u))
-        return 0;
-    return kw_crc(kw_xip(USR_AT_SLOT(k) + USR_DATA), h->len) == h->crc;
-}
-
-static void usr_boot(void)                      /* at start: the slots that hold a sound */
-{
-    uint32_t k;
 #if !defined(DINGHY_HOST) && !defined(KAWA_WASM)
     if (!flash_ok)
         return;
     fl_plain_window_init();                     /* the data area reads as it was written (Felucca's persist_boot) */
 #endif
-    for (k = 0; k < NUSR; k++) {
-        usr_hdr_t h;
-        usr_data[k] = 0;
-        if (kw_read(USR_AT_SLOT(k), &h, sizeof h) || !usr_check(k, &h))
-            continue;
-        h.name[11] = 0;
-        usr_hdr[k] = h;
-        usr_data[k] = kw_xip(USR_AT_SLOT(k) + USR_DATA);
-    }
     dx_ok = (uint8_t)dx_valid(kw_xip(DX_AT));   /* (Gabare) the DX7 bank */
 }
 
@@ -160,11 +141,8 @@ static void kw_reply(uint32_t cmd, const uint8_t *b, uint32_t n)   /* n <= 100 *
 /* (Gabare 0.8) the end of a song's session: the song received (ok), or the one saved at BEGIN back (the autosave) */
 static void kw_prj_done(int ok)
 {
-    uint32_t t;
     if (ok) {
         prj_sanitize();
-        for (t = 0; t < NTRK; t++)
-            sed_normalise(t);
         prj.home = 0;                           /* (it is no slot's yet: SAVE asks for one) */
         dirty = 1;
         auto_due = 1;
@@ -190,20 +168,6 @@ static void kw_end_session(void)
     audio_hold = 0;
 }
 
-static int kw_take_slot(uint32_t k)             /* stop what reads it, hold the sound */
-{
-    if (k >= NUSR)
-        return KW_EARGS;
-    if (sq_play)
-        return KW_EBUSY;
-    usr_data[k] = 0;
-    smp_kill = 1;
-    kw_hold_wait();
-    audio_hold = 1;
-    kw_hold_wait();
-    return KW_OK;
-}
-
 static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
 {
     uint8_t r[100];
@@ -216,12 +180,12 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         static const char V[] = APP_VER "    ";
         r[1] = 'K'; r[2] = 'A'; r[3] = 'W'; r[4] = 'A';
         for (i = 0; i < 4u; i++) r[5 + i] = (uint8_t)V[i];
-        r[9] = NUSR;
-        r[10] = (uint8_t)USR_CAP; r[11] = (uint8_t)(USR_CAP >> 8); r[12] = (uint8_t)(USR_CAP >> 16);
+        r[9] = 0;                               /* ((Gabare 0.9) no sample slot: SAMPLE is gone) */
+        r[10] = r[11] = r[12] = 0;
         /* (Gabare) after KAWA's fields, which its sample tools read (they stop there): "GABARE" and the number of
          * engines, so a computer tells Gabare from KAWA */
         r[13] = 'G'; r[14] = 'A'; r[15] = 'B'; r[16] = 'A'; r[17] = 'R'; r[18] = 'E';
-        r[19] = (uint8_t)E_N;
+        r[19] = (uint8_t)ENG_NORDER;            /* ((0.9) the engines it plays, BRUIT and SAMPLE retired: 15) */
         r[20] = dx_ok;                          /* (Gabare) a DX7 bank */
         r[21] = (uint8_t)sizeof prj; r[22] = (uint8_t)(sizeof prj >> 8); r[23] = (uint8_t)(sizeof prj >> 16);   /* (0.7) */
         r[24] = PRJ_VERSION;
@@ -230,78 +194,9 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         kw_reply(cmd, r, 27);
         return;
     }
-    case KW_BEGIN:
-        if (n != 1u) { r[0] = KW_EARGS; break; }
-        if (!kw_flash_known) { r[0] = KW_EFLASH; break; }   /* (Gabare 0.9) an unknown chip: left alone */
-        if (kw_slot != 0xFFu && kw_slot != k) kw_end_session();
-        if ((r[0] = (uint8_t)kw_take_slot(k)) != KW_OK) break;
-        if (kw_erase(USR_AT_SLOT(k))) { r[0] = KW_EFLASH; kw_end_session(); break; }   /* the header first: empty */
-        kw_slot = (uint8_t)k;
-        kw_next = 0;
+    case KW_BEGIN: case KW_WRITE: case KW_END: case KW_ERASE: case KW_LIST:
+        r[0] = KW_EARGS;                        /* ((Gabare 0.9) KAWA's user samples: gone with SAMPLE) */
         break;
-    case KW_WRITE: {
-        uint32_t off = n >= 4u ? (uint32_t)a[1] | (uint32_t)a[2] << 8 | (uint32_t)a[3] << 16 : 0xFFFFFFFFu, len = n - 4u;
-        r[2] = n >= 4u ? a[1] : 0; r[3] = n >= 4u ? a[2] : 0; r[4] = n >= 4u ? a[3] : 0;
-        if (n < 5u || len > 256u || (off & 0xFFu) || off + len > USR_CAP) { r[0] = KW_EARGS; kw_reply(cmd, r, 5); return; }
-        if (k != kw_slot) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
-        if (off + 256u == kw_next) {            /* the same frame again (its reply was lost): already there */
-            r[0] = kw_last_rc;
-            kw_reply(cmd, r, 5);
-            return;
-        }
-        if (off != kw_next) { r[0] = KW_ESTATE; kw_reply(cmd, r, 5); return; }
-        {
-            uint32_t at = USR_AT_SLOT(k) + USR_DATA + off;
-            if (((at & 0xFFFu) == 0u || off == 0u) && (at & ~0xFFFu) != USR_AT_SLOT(k) && kw_erase(at & ~0xFFFu))
-                r[0] = KW_EFLASH;               /* a new sector: erased first (the header's was in BEGIN) */
-            else if (kw_prog(at, a + 4, len))
-                r[0] = KW_EFLASH;
-        }
-        if (r[0] == KW_OK) kw_next = off + 256u;
-        kw_last_rc = r[0];
-        kw_reply(cmd, r, 5);
-        return;
-    }
-    case KW_END: {
-        usr_hdr_t h, back;
-        if (n != 1u + sizeof h) { r[0] = KW_EARGS; break; }
-        if (k != kw_slot) { r[0] = KW_ESTATE; break; }
-        memcpy(&h, a + 1, sizeof h);
-        h.name[11] = 0;
-        if (h.len > kw_next || !usr_check(k, &h)) { r[0] = KW_ECRC; kw_end_session(); break; }
-        if (kw_prog(USR_AT_SLOT(k), (const uint8_t *)&h, sizeof h) || kw_read(USR_AT_SLOT(k), &back, sizeof back) ||
-            memcmp(&h, &back, sizeof h)) {
-            r[0] = KW_EFLASH;
-            kw_end_session();
-            break;
-        }
-        usr_hdr[k] = h;
-        usr_data[k] = kw_xip(USR_AT_SLOT(k) + USR_DATA);
-        kw_end_session();
-        wv_src = 0xFF;                          /* (the SOUND page draws it again) */
-        toast(TR("SAMPLE RECU !", "SAMPLE IN !", "SAMPLE RECIBIDO !"));
-        break;
-    }
-    case KW_ERASE:
-        if (n != 1u) { r[0] = KW_EARGS; break; }
-        if (!kw_flash_known) { r[0] = KW_EFLASH; break; }   /* (Gabare 0.9) */
-        if ((r[0] = (uint8_t)kw_take_slot(k)) != KW_OK) break;
-        for (i = 0; i < USR_SIZE; i += 0x1000u)
-            if (kw_erase(USR_AT_SLOT(k) + i)) { r[0] = KW_EFLASH; break; }
-        kw_end_session();
-        break;
-    case KW_LIST:
-        for (i = 0; i < NUSR; i++) {
-            uint8_t *q = r + 1 + i * 18u;
-            const usr_hdr_t *h = &usr_hdr[i];
-            uint32_t used = usr_data[i] != 0, j;
-            q[0] = (uint8_t)used;
-            q[1] = (uint8_t)(used ? h->rate : 0); q[2] = (uint8_t)(used ? h->rate >> 8 : 0);
-            q[3] = (uint8_t)(used ? h->len : 0); q[4] = (uint8_t)(used ? h->len >> 8 : 0); q[5] = (uint8_t)(used ? h->len >> 16 : 0);
-            for (j = 0; j < 12u; j++) q[6 + j] = (uint8_t)(used ? h->name[j] : 0);
-        }
-        kw_reply(cmd, r, 1 + NUSR * 18u);
-        return;
     case KW_DXBEGIN:                            /* (Gabare) the DX7 bank */
         if (n != 1u || k != 0u) { r[0] = KW_EARGS; break; }
         if (!kw_flash_known) { r[0] = KW_EFLASH; break; }   /* (0.9) an unknown chip: the bank stays as it is */

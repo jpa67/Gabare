@@ -1,5 +1,5 @@
 {
-  "what": "Gabare is KAWA's pocket tracker with nine more synth engines: Skiff's ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL and PHYS, and JIANT's STRING and ADD, fifteen in all. It adds an arpeggiator on the keys, chords in a cell (ACC), the FM-1's 128 original voices and your own DX7 banks on the FM track, and songs read from and sent to a computer over USB. A fork of KAWA by Omnipotard: KAWA's projects and samples load as they are.",
+  "what": "Gabare is KAWA's pocket tracker with fifteen synth engines: KAWA's PULSE, WAVE, FM and KIT, Skiff's ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL and PHYS, JIANT's STRING and ADD, SLOOP's NOISE and 4-operator FM. It adds an arpeggiator with fifteen modes, chords in a cell (ACC), INSERT effects, MIDI by channel on the TRS jack and USB, the FM-1's 128 original voices and your own DX7 banks on the FM track, and songs sent to and from a computer. A fork of KAWA by Omnipotard: KAWA's projects load as they are (SAMPLE tracks on a kit).",
   "author": "jpa67, on KAWA by Omnipotard",
   "kinds": [
     "tracker"

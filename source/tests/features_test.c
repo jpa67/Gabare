@@ -198,51 +198,66 @@ int main(void)
                    g_rowlen, ticks);
         }
     }
-    /* 7. the sample edit: the middle half of the break, its slices across it; a slice by hand; reverse; NORMALISE */
+    /* 7. (Gabare 0.9) the arpeggio's modes (SLOOP's), C E G held (as played: E C G), one octave; then two for CHORD */
+    {
+        static const struct { uint8_t mode, want[8]; } M[] = {
+            {AM_UP, {60, 64, 67, 60, 64, 67, 60, 64}},   {AM_DOWN, {67, 64, 60, 67, 64, 60, 67, 64}},
+            {AM_UPDN, {60, 64, 67, 64, 60, 64, 67, 64}}, {AM_PLAYED, {64, 60, 67, 64, 60, 67, 64, 60}},
+            {AM_REPEAT, {67, 67, 67, 67, 67, 67, 67, 67}}, {AM_DNUP, {67, 64, 60, 64, 67, 64, 60, 64}},
+            {AM_UP8, {60, 64, 67, 72, 60, 64, 67, 72}},  {AM_CONV, {60, 67, 64, 60, 67, 64, 60, 67}},
+            {AM_DIVG, {64, 67, 60, 64, 67, 60, 64, 67}}, {AM_PINKY, {60, 67, 64, 67, 60, 67, 64, 67}},
+            {AM_THUMB, {60, 64, 60, 67, 60, 64, 60, 67}},
+        };
+        uint32_t m, j, ok = 1;
+        for (m = 0; m < sizeof M / sizeof M[0]; m++) {
+            arp_mode = M[m].mode; arp_oct = 1;
+            a_n = 3; a_note[0] = 64; a_note[1] = 60; a_note[2] = 67; a_idx = 0;
+            for (j = 0; j < 8u; j++) {
+                uint32_t n = arp_next();
+                if (n != M[m].want[j]) { CHECK(0, "7. arpeggio mode %u, step %u: %u (want %u)", M[m].mode, j, n, M[m].want[j]); ok = 0; break; }
+            }
+        }
+        arp_mode = AM_WALK; a_idx = 0;           /* WALK: each step next to the last */
+        {
+            uint32_t last = arp_next(), n;
+            for (j = 0; j < 30u; j++) {
+                n = arp_next();
+                if (!((last == 60u && n == 64u) || (last == 64u && (n == 60u || n == 67u)) || (last == 67u && n == 64u))) {
+                    CHECK(0, "7. WALK jumped from %u to %u", last, n); ok = 0; break;
+                }
+                last = n;
+            }
+        }
+        arp_mode = AM_CHORD; arp_oct = 2; a_idx = 0;   /* CHORD: its root, an octave a step */
+        CHECK(arp_next() == 60u && arp_next() == 72u && arp_next() == 60u, "7. CHORD: roots 60, 72, 60");
+        arp_mode = AM_OFF; arp_oct = 1; a_n = 0;
+        if (ok) printf("7. the arpeggio's 15 modes: UP .. THUMB as SLOOP's for C E G, WALK by steps, CHORD by octaves\n");
+    }
+    /* 7b. (Gabare 0.9) MIDI by channel: channel 3 plays track 3, its CC 7 its volume, a program its sound, the pedal */
     fresh();
     {
-        const smpv_t *v;
-        uint32_t len = BRK_LEN, a = (uint32_t)(((uint64_t)16384u * len) >> 16), b = (uint32_t)(((uint64_t)49152u * len) >> 16);
-        prj.sed[5].start = 16384;
-        prj.sed[5].end = 49152;
-        ev_push(EV_ON, 5, 1, 12, 0, 0);
+        uint32_t pr = prj.snd[2].preset;
+        set.mchan = 1;
+        host_midi_in[hmi_w++ % 64u] = 0x92u | 60u << 8 | 100u << 16;   /* note on, channel 3 */
+        host_midi_in[hmi_w++ % 64u] = 0xB2u | 7u << 8 | 0u << 16;      /* CC 7: 0 */
+        host_midi_in[hmi_w++ % 64u] = 0xC2u | 1u << 8;                 /* program 2 of the engine */
+        host_midi_in[hmi_w++ % 64u] = 0xB2u | 64u << 8 | 127u << 16;   /* the pedal down */
+        host_midi_in[hmi_w++ % 64u] = 0x82u | 60u << 8;                /* note off: held */
+        midi_in();
         block();
-        v = &smp[5][smp_next[5] ^ 1u];
-        CHECK((v->lo >> 16) == a, "7. slice 1 starts at %u (want %u)", v->lo >> 16, a);
-        ev_push(EV_ON, 5, 16, 12, 0, 0);
+        CHECK(tk[2].note == 60u && tk[2].gate, "7b. channel 3: track 3 plays note %u (gate %u)", tk[2].note, tk[2].gate);
+        CHECK(prj.snd[2].p[P_VOL] == 0, "7b. CC 7 on channel 3: volume %d", prj.snd[2].p[P_VOL]);
+        CHECK(prj.snd[2].preset != pr && PRESETS[prj.snd[2].preset].engine == ENG(2), "7b. program change: sound %u", prj.snd[2].preset);
+        host_midi_in[hmi_w++ % 64u] = 0xB2u | 64u << 8;                /* the pedal up: the note goes */
+        midi_in();
         block();
-        v = &smp[5][smp_next[5] ^ 1u];
-        CHECK((v->lo >> 16) == a + ((15u * (b - a)) >> 4), "7. slice 16 starts at %u (want %u)", v->lo >> 16,
-              a + ((15u * (b - a)) >> 4));
-        prj.sed[5].manual = 1;
-        for (k = 0; k < 16u; k++) prj.sed[5].sl[k] = (uint16_t)(16384u + k * 2048u);
-        prj.sed[5].sl[3] = 30000;
-        prj.sed[5].rev = 1;
-        sed_fix(&prj.sed[5]);
-        ev_push(EV_ON, 5, 4, 12, 0, 0);
-        block();
-        v = &smp[5][smp_next[5] ^ 1u];
-        CHECK((v->lo >> 16) == (uint32_t)(((uint64_t)30000u * len) >> 16) && v->rev, "7. slice 4 by hand at %u, reverse %u",
-              v->lo >> 16, v->rev);
-        printf("7. the edit: slice 1 at %u, slice 16 at %u, slice 4 by hand at %u, reversed\n", a, a + ((15u * (b - a)) >> 4),
-               (uint32_t)(((uint64_t)30000u * len) >> 16));
-    }
-    {                                           /* a quiet sound of the user's: NORMALISE lifts it */
-        static uint8_t q[8000];
-        uint32_t j;
-        for (j = 0; j < sizeof q; j++) {        /* a sine at about -18 dB, in the breaks' mu-law */
-            int32_t x = sine(j * 0x02000000u) / 8, best = 0, bd = 1 << 30, m;
-            for (m = 0; m < 256; m++) { int32_t dd = BRK_ULAW[m] - x; if (dd < 0) dd = -dd; if (dd < bd) { bd = dd; best = m; } }
-            q[j] = (uint8_t)best;
-        }
-        usr_put(0, q, sizeof q, 22050, "QUIET");
-        prj.snd[5].p[P_SRC] = (int8_t)BRK_N;
-        prj.snd[5].p[P_SMODE] = 1;
-        sed_reset(&prj.sed[5]);
-        prj.sed[5].norm = 1;
-        sed_normalise(5);
-        CHECK(prj.sed[5].gain >= 1900u && prj.sed[5].gain <= 2200u, "7. NORMALISE: gain %u (want ~x8: 2000)", prj.sed[5].gain);
-        printf("7. NORMALISE on a sound at -18 dB: x%u.%u\n", prj.sed[5].gain / 256u, prj.sed[5].gain % 256u * 10u / 256u);
+        CHECK(!tk[2].gate, "7b. the pedal up: the held note ends");
+        host_midi_in[hmi_w++ % 64u] = 0xE2u | 0x7Fu << 8 | 0x7Fu << 16;   /* bend all the way up */
+        midi_in();
+        CHECK(midi_bend[2] > 500 && midi_bend[2] <= 512, "7b. pitch bend up: %d (want ~512: 2 semitones)", midi_bend[2]);
+        midi_bend[2] = 0;
+        set.mchan = 0;
+        printf("7b. MIDI channels: a note, CC 7, a program, the pedal, the bend on track 3\n");
     }
     /* 8. the MIDI clock in: START, then 120 BPM; the rows follow the ticks, the tempo is measured; 150 BPM; STOP */
     fresh();
@@ -380,26 +395,21 @@ int main(void)
         nd = last_reply(d, sizeof d);
         CHECK(nd >= 27u && d[26] == 1u, "10. INFO on a known chip: %u bytes, byte 26 = %u (want 27, 1)", nd, nd > 26u ? d[26] : 0u);
         kw_flash_known = 0;
-        memset(kw_flash + (USR_AT_SLOT(0) - USR_AT), 0x5A, 0x1000u);
         memset(kw_flash + (DX_AT - USR_AT), 0x5A, 0x1000u);
         kw_handle(KW_INFO, 0, 0);
         nd = last_reply(d, sizeof d);
         CHECK(nd >= 27u && d[26] == 0u, "10. INFO on an unknown chip: byte 26 = %u (want 0)", nd > 26u ? d[26] : 9u);
         kw_handle(KW_BEGIN, SLOT0, 1);
         last_reply(d, sizeof d);
-        CHECK(d[0] == KW_EFLASH, "10. sample BEGIN on an unknown chip: rc %u (want 3)", d[0]);
-        kw_handle(KW_ERASE, SLOT0, 1);
-        last_reply(d, sizeof d);
-        CHECK(d[0] == KW_EFLASH, "10. sample ERASE on an unknown chip: rc %u (want 3)", d[0]);
+        CHECK(d[0] == KW_EARGS, "10. sample BEGIN (no sample slot since 0.9): rc %u (want 1)", d[0]);
         kw_handle(KW_DXBEGIN, SLOT0, 1);
         last_reply(d, sizeof d);
         CHECK(d[0] == KW_EFLASH, "10. DX BEGIN on an unknown chip: rc %u (want 3)", d[0]);
-        CHECK(kw_flash[USR_AT_SLOT(0) - USR_AT] == 0x5Au && kw_flash[USR_AT_SLOT(0) - USR_AT + 0xFFFu] == 0x5Au &&
-              kw_flash[DX_AT - USR_AT] == 0x5Au && kw_flash[DX_AT - USR_AT + 0xFFFu] == 0x5Au,
+        CHECK(kw_flash[DX_AT - USR_AT] == 0x5Au && kw_flash[DX_AT - USR_AT + 0xFFFu] == 0x5Au,
               "10. an unknown chip was written to");
         CHECK(kw_slot == 0xFFu && !audio_hold, "10. a session was left open (slot %u, hold %u)", kw_slot, audio_hold);
         kw_flash_known = 1;
-        printf("10. flash chip: INFO says known / unknown; on an unknown one BEGIN, ERASE, DX BEGIN answer 3, nothing written\n");
+        printf("10. flash chip: INFO says known / unknown; on an unknown one DX BEGIN answers 3, nothing written\n");
     }
     if (fails) { printf("features_test: %d failures\n", fails); return 1; }
     printf("features_test: passed\n");

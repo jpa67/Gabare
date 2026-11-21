@@ -427,16 +427,18 @@ int main(void)
     button_down(BTN_OCT_UP); button_up(BTN_OCT_UP);
     CHECK(!pat_linked(31), "9. refused on the last pattern");
 
-    /* 10. the buttons: SCL goes SCALE, (Gabare) ARPEGGIO, MAGIC, back; the LED of LFO, the pages of the help */
+    /* 10. the buttons: SCL goes SCALE, (Gabare) ARPEGGIO, (0.9) ARPEGGIO 2, MAGIC, back; the LED of LFO, the pages of the help */
     fresh();
     tap(BTN_SEL);
     CHECK(page == PG_SCALE, "10. SCL: SCALE");
     tap(BTN_SEL);
-    CHECK(page == PG_ARP, "10. SCL again: ARPEGGIO (Gabare)");
+    CHECK(page == PG_ARP && !arp_sub, "10. SCL again: ARPEGGIO (Gabare)");
     tap(BTN_SEL);
-    CHECK(page == PG_MAGIC, "10. SCL a third time: MAGIC");
+    CHECK(page == PG_ARP && arp_sub, "10. SCL a third time: ARPEGGIO 2 (Gabare 0.9)");
     tap(BTN_SEL);
-    CHECK(page == PG_TRACK, "10. SCL a fourth time: TRACKS");
+    CHECK(page == PG_MAGIC && !arp_sub, "10. SCL a fourth time: MAGIC");
+    tap(BTN_SEL);
+    CHECK(page == PG_TRACK, "10. SCL a fifth time: TRACKS");
     /* 11. a 0.4 project (pads zero) and a damaged pad load safely */
     fresh();
     prj.pat[3].pad[0] = 0x77; prj.snd[2].sat = 200;
@@ -734,11 +736,16 @@ int main(void)
         a[0] = b[0] = 0; note_text(0, nt, a, 1); note_text(0, nt, b, 0);
         CHECK(nt == (uint32_t)WHITE_OF_KEY[bk - 1u] + 17u && fx == 0 && a[2] == '+' && !strchr(b, '+') && note_up(0, nt) && !note_up(0, nt - 16u),
               "17. kit: black key %u -> note %u, \"%s\" / \"%s\"", bk, nt, a, b);
-        prj.snd[0].engine = E_SAMPLE; prj.snd[0].p[P_SMODE] = 0; sound_build(0);
-        a[0] = b[0] = 0; note_text(0, 28u, a, 1); note_text(0, 12u, b, 1);
-        CHECK(!strcmp(a, "12+") && !strcmp(b, "S12"), "17. slices: 12 an octave up \"%s\", 12 \"%s\"", a, b);
-        a[0] = b[0] = 0; note_text(0, 26u, a, 1); note_text(0, 28u, b, 1);
-        CHECK(strcmp(a, b) != 0, "17. slices 10 and 12 an octave up differ (\"%s\", \"%s\")", a, b);
+        /* (Gabare 0.9) a song of KAWA's with BRUIT (white, metal) and SAMPLE: NOISE and a kit, the BRUIT's envelope kept */
+        prj.snd[1].engine = E_XNOISE; prj.snd[1].p[P_S0] = 0; prj.snd[1].p[P_ATT] = 3; prj.snd[1].p[P_REL] = 9;
+        prj.snd[2].engine = E_XNOISE; prj.snd[2].p[P_S0] = 1;
+        prj.snd[3].engine = E_XSAMPLE; prj.snd[3].preset = 200;
+        prj_sanitize();
+        CHECK(prj.snd[1].engine == E_NOISE && !strcmp(PRESETS[prj.snd[1].preset].name[0], "CHARLEY") &&
+              prj.snd[1].p[P_ATT] == 3 && prj.snd[1].p[P_REL] == 9, "17. BRUIT -> NOISE CHARLEY (%u, %s)",
+              prj.snd[1].engine, PRESETS[prj.snd[1].preset % NPRESET].name[0]);
+        CHECK(prj.snd[2].engine == E_NOISE && !strcmp(PRESETS[prj.snd[2].preset].name[0], "METAL"), "17. BRUIT metal -> NOISE METAL");
+        CHECK(prj.snd[3].engine == E_KIT && PRESETS[prj.snd[3].preset].engine == E_KIT, "17. SAMPLE -> KIT");
     }
 
     /* 18. the demo shows its last pattern (7/7), but the first PLAY still starts the song at its first one;

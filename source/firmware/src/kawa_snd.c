@@ -86,12 +86,35 @@ static uint8_t lv_uni;                          /* 1 unison, 2 unison an octave 
 static uint8_t lv_mute;                         /* tracks silenced, bit per track */
 static uint8_t lv_mask = 0xFF;                  /* the tracks the live layer's pitch effects reach (the target's) */
 static uint32_t lfo_inc[11];                    /* the LFO's rates per chunk, from the tempo (kawa_seq.c) */
+static volatile int16_t midi_bend[NTRK];        /* (Gabare 0.9) MIDI pitch bend, Q8 semitones (main loop: kawa_ui.c) */
 
 /* ---- the effect of a track or of the master */
+#define FXL_LEN 256u                            /* (Gabare 0.9) FLANGER / CHORUS: the line (a power of 2) */
 typedef struct {
     int32_t lp, bp, hold, tone;
     uint32_t n, ph;
+    int32_t hp, dc, fb, px[4], py[4];           /* (0.9) SLOOP's INSERT: low cut, DC blocker, the phaser's stages */
+    uint16_t wp;
+    int16_t line[FXL_LEN];
 } fxs_t;
+/* (Gabare 0.9) SLOOP's INSERT (fx.c ins_*, Felucca 1.4): PHASER's all-pass coefficient over its sweep (Q14, 33 points) */
+static const int16_t FX_PH_A[33] = {
+    -16038, -15998, -15955, -15906, -15853, -15793, -15727, -15653, -15572, -15481, -15381, -15270, -15147, -15012,
+    -14862, -14696, -14514, -14313, -14092, -13849, -13582, -13290, -12970, -12621, -12240, -11825, -11375, -10886,
+    -10356, -9784, -9166, -8500, -7783,
+};
+static uint32_t fx_tri(uint32_t q) { uint32_t t = q >> 16; return t < 32768u ? t << 1 : (65535u - t) << 1; }
+static int32_t fx_shape(int32_t type, int32_t v)   /* SOFT .. FUZZ: the drive's shape (v: a voice's full scale 32768) */
+{
+    if (type == FXT_SOFT) return sat(v);
+    if (type == FXT_HARD) return clampi(v, -24000, 24000);
+    if (type == FXT_FOLD) {                     /* a triangle of period 65536: +-16384, x 1.5 */
+        int32_t u = (int32_t)((uint32_t)(v + 16384) & 0xFFFFu) - 32768;
+        u = 16384 - (u < 0 ? -u : u);
+        return u + (u >> 1);
+    }
+    return v > 0 ? (v > 20000 ? 20000 : v) : sat(v) >> 1;   /* FUZZ: lopsided */
+}
 static void fx_insert(fxs_t *s, int32_t type, int32_t a, int32_t b, int32_t mix, int32_t *x, uint32_t n)
 {
     uint32_t i, rinc = 0;
@@ -103,6 +126,12 @@ static void fx_insert(fxs_t *s, int32_t type, int32_t a, int32_t b, int32_t mix,
     bq = b * 2185;                              /* b / 15, Q15 (no division per frame) */
     if (type == FXT_RING)
         rinc = pitch_inc((40 + a * 5) * 256);
+    if (type >= FXT_PHASER)                     /* (0.9) the sweep: A its rate (~0.02 .. 5 Hz), B its depth */
+        rinc = (uint32_t)((a + 1) * (a + 1)) * 2000u;
+    if (type == FXT_PHASER) {                   /* (its coefficient once a chunk, at its middle) */
+        uint32_t tr = fx_tri(s->ph + (n >> 1) * rinc), qq = 32768u + (uint32_t)(((int32_t)tr - 32768) * b / 15);
+        f = FX_PH_A[qq >> 11] + (((FX_PH_A[(qq >> 11) + 1u] - FX_PH_A[qq >> 11]) * (int32_t)(qq & 2047u)) >> 11);
+    }
     if (type == FXT_LPF || type == FXT_HPF || type == FXT_BPF) {
         f = SVF_F[30 + a * 6];
         q = 30000 - b * 1800;
@@ -144,6 +173,52 @@ static void fx_insert(fxs_t *s, int32_t type, int32_t a, int32_t b, int32_t mix,
             if ((i & 15u) == 0u) s->ph += lfo_inc[clampi(4 + a / 4, 0, 10)] ;
             y = (int32_t)(((int64_t)d * (32767 - ((((32767 - sine(s->ph)) >> 1) * bq) >> 15))) >> 15);
             break;
+        case FXT_SOFT: case FXT_HARD: case FXT_FOLD: case FXT_FUZZ: {   /* (0.9) low cut, GAIN, shape, TONE, DC */
+            int32_t g = 4096 + a * a * 192, v;  /* 1x .. ~11.5x, Q12 (SLOOP's DRIVE over A 0..15) */
+            s->hp += ((d << 8) - s->hp) >> 8;
+            v = clampi(d - (s->hp >> 8), -230000, 230000);
+            y = fx_shape(type, ((v >> 3) * g) >> 9);
+            s->tone += (int32_t)(((int64_t)(y - s->tone) * TON_A[b]) >> 15);
+            y = s->tone;
+            s->dc += ((y << 8) - s->dc) >> 9;
+            y -= s->dc >> 8;
+            break;
+        }
+        case FXT_PHASER: {                      /* (0.9) four all-pass stages, fed back */
+            int32_t u = clampi((d + 4) >> 3, -16383, 16383) + ((s->fb * 11520 + 16384) >> 15), k;
+            for (k = 0; k < 4; k++) {
+                int32_t z = clampi(s->px[k] + ((f * (u - s->py[k]) + 8192) >> 14), -65535, 65535);
+                s->px[k] = u;
+                s->py[k] = z;
+                u = z;
+            }
+            s->fb = clampi(u, -32767, 32767);
+            s->ph += rinc;
+            u <<= 2;
+            s->dc += ((u << 8) - s->dc) >> 9;
+            y = (d >> 1) + u - (s->dc >> 8);
+            break;
+        }
+        case FXT_FLANGER: case FXT_CHORUS: {    /* (0.9) a swept delay, fed back */
+            int32_t ch = type == FXT_CHORUS, fbk = ch ? 3296 : 14016, r0, r1, v, fr;
+            uint32_t dl;
+            if (ch) dl = (uint32_t)((140 << 16) + ((sine(s->ph) * (b * 8) * 50) >> 5));   /* 3.2 +- 2.3 ms */
+            else {
+                uint32_t tr = fx_tri(s->ph), sw = (tr * tr) >> 16;
+                dl = (11u << 16) + 209u * (((sw >> 1) * ((uint32_t)b * 8u * 516u)) >> 15);   /* 0.25 .. 5 ms */
+            }
+            s->ph += rinc;
+            r0 = (int32_t)(s->wp - (dl >> 16)) & (int32_t)(FXL_LEN - 1u);
+            r1 = (r0 - 1) & (int32_t)(FXL_LEN - 1u);
+            fr = (int32_t)((dl >> 1) & 0x7FFFu);
+            v = s->line[r0] + (((s->line[r1] - s->line[r0]) * fr) >> 15);
+            s->line[s->wp] = (int16_t)clampi((d >> 2) + sat((v * fbk) >> 15), -32767, 32767);
+            s->wp = (uint16_t)((s->wp + 1u) & (FXL_LEN - 1u));
+            v <<= 1;
+            s->dc += ((v << 8) - s->dc) >> 9;
+            y = (d >> 1) + v - (s->dc >> 8);
+            break;
+        }
         default:
             y = d;
             break;
@@ -182,7 +257,8 @@ static int8_t chord_custom[NTRK][CHORD_MAX];
 static uint8_t chord_custom_n[NTRK];
 static int chord_engine(uint32_t e)             /* the engines that play an ACC chord */
 {
-    return e == E_PULSE || e == E_WAVE || e == E_FM || e == E_ANALOG || e == E_PHASE || e == E_LOFI || e == E_TRIO;
+    return e == E_PULSE || e == E_WAVE || e == E_FM || e == E_ANALOG || e == E_PHASE || e == E_LOFI || e == E_TRIO ||
+           e == E_DIGI;                         /* ((Gabare 0.9) DIGITAL too) */
 }
 
 /* ---- FM: one track (fm_trk), two voices (the new note and the last one's release). The patch is the
@@ -263,145 +339,6 @@ static void fm_chord_off(void)
 
 #include "kawa_drums.c"
 
-/* ---- SAMPLE: a break or a user sample, two voices so that a new note fades the last one out */
-typedef struct {
-    uint8_t on, rev, crush;
-    const uint8_t *d;
-    uint32_t pos, step, step0, lo, hi;          /* Q16, in the sample's frames; step0: without the table's pitch */
-    int32_t g, gtgt, gstep, fade_at, rel, drive, gain;   /* gain: the edit's NORMALISE, Q8 */
-} smpv_t;
-static smpv_t smp[NTRK][2];
-static uint8_t smp_next[NTRK];
-
-static int smp_source(uint32_t src, const uint8_t **d, uint32_t *len, uint32_t *rate)
-{
-    if (src < BRK_N) {
-        *d = BRK_DATA[src];
-        *len = BRK_LEN;
-        *rate = BRK_SR;
-        return 1;
-    }
-    src -= BRK_N;
-    if (src < NUSR && usr_data[src] && usr_hdr[src].len > 64u) {
-        *d = usr_data[src];
-        *len = usr_hdr[src].len;
-        *rate = usr_hdr[src].rate;
-        return 1;
-    }
-    return 0;
-}
-
-static int src_is_break(int32_t s) { return s >= 0 && s < (int32_t)BRK_N; }
-
-static uint32_t sed_at(uint32_t x, uint32_t len) { return (uint32_t)(((uint64_t)x * len) >> 16); }   /* 65536ths */
-
-static void smp_retune(smpv_t *v, int32_t tr)   /* the table's semitones over the note (no division) */
-{
-    v->step = tr ? (uint32_t)(((uint64_t)v->step0 * semi_ratio(tr)) >> 16) : v->step0;
-}
-
-static int32_t smp_extra;                       /* semitones added to the next smp_on (a black key on a slice track) */
-static void smp_on(uint32_t t, uint32_t note, const tricks_t *k)
-{
-    const int8_t *p = prj.snd[t].p;
-    const sedit_t *se = &prj.sed[t];
-    smpv_t *v = &smp[t][smp_next[t]], *o = &smp[t][smp_next[t] ^ 1u];
-    const uint8_t *d;
-    uint32_t len, rate, s0, s1, a, b, ratio, q = DUR_Q[clampi(p[P_LEN], 0, 11)];
-    int32_t sv, semis = p[P_STUNE] + ((lv_mask >> t & 1u) ? lv_transpose : 0) + (trick(k, FX_PITCH, &sv) ? sv : 0) + smp_extra;
-    smp_extra = 0;
-    if (!smp_source((uint32_t)clampi(p[P_SRC], 0, BRK_N + NUSR - 1), &d, &len, &rate))
-        return;
-    if (o->on)
-        o->gtgt = 0, o->gstep = -(32767 / 96);  /* ~2 ms */
-    smp_next[t] ^= 1u;
-    a = sed_at(se->start, len);                 /* the edit: where the sound starts and ends (65535: its end) */
-    b = se->end >= 65535u ? len : sed_at(se->end, len);
-    if (a + 64u > b)
-        a = b > 64u ? b - 64u : 0u;
-    if (p[P_SMODE] == 0) {                      /* slices: 16 across it, or where the edit put them */
-        uint32_t sl = note & 15u, w;
-        if (se->manual) {
-            s0 = sed_at(se->sl[sl], len);
-            w = sl < 15u ? sed_at(se->sl[sl + 1u], len) : b;
-            w = w > s0 ? (w - s0) << 4 : 0u;    /* (as 16 of them: the LENGTH below is in 64ths) */
-        } else {
-            w = b - a;
-            s0 = a + ((sl * w) >> 4);
-        }
-        if (s0 < a) s0 = a;
-        s1 = q ? s0 + ((q * w) >> 6) : b;       /* LENGTH: quarters of a slice */
-    } else {                                    /* notes: from the start, C4 = as recorded */
-        s0 = a;
-        s1 = b;
-        semis += (int32_t)note - 60;
-    }
-    if (s1 > b)
-        s1 = b;
-    if (s1 > len - 2u)                          /* (the interpolation reads one frame on) */
-        s1 = len - 2u;
-    if (s0 > s1)
-        s0 = s1;
-    if (trick(k, FX_OFS, &sv) && s1 > s0)       /* OFS: further in */
-        s0 += (uint32_t)clampi(sv, 0, 15) * ((s1 - s0) >> 4);
-    v->d = d;
-    v->lo = s0 << 16;
-    v->hi = s1 << 16;
-    v->rev = (uint8_t)((trick(k, FX_REV, &sv) ? 1u : 0u) ^ (se->rev ? 1u : 0u));   /* REV: the other way */
-    v->pos = v->rev ? v->hi : v->lo;
-    v->gain = se->norm ? clampi(se->gain, 64, 4096) : 256;
-    ratio = semi_ratio(semis);
-    v->step = (((rate << 16) / 44100u) * (ratio >> 4)) >> 12;   /* the sample's rate, times the pitch */
-    if (p[P_FIT] && src_is_break(p[P_SRC]))     /* FIT: a break follows the tempo */
-        v->step = (uint32_t)(((uint64_t)v->step * (((uint32_t)prj.bpm << 16) / BRK_BPM)) >> 16);
-    v->step0 = v->step;
-    smp_retune(v, tk[t].tb_tr);
-    v->g = 0;
-    v->gtgt = 32767;
-    v->gstep = 32767 / 40;
-    v->rel = 2;
-    v->fade_at = 0;
-    v->drive = 1 + p[P_SDRIVE];
-    v->crush = (uint8_t)(trick(k, FX_CRUSH, &sv) ? sv : p[P_SCRUSH]);
-    v->on = 1;
-}
-
-static void smp_chunk(smpv_t *v, int32_t *out)
-{
-    const uint8_t *d = v->d;
-    uint32_t i, remain;
-    int32_t m = crush_mask(v->crush);
-    if (!v->on)
-        return;
-    remain = v->rev ? (v->pos - v->lo) : (v->hi - v->pos);
-    if (!v->fade_at && remain < (uint32_t)(v->rel * 260 + 32) * v->step) {   /* the end fades */
-        v->fade_at = 1;
-        v->gtgt = 0;
-        v->gstep = -(32767 / (v->rel * 260 + 32) + 1);
-    }
-    for (i = 0; i < CHUNK; i++) {
-        uint32_t k = v->pos >> 16, f = (v->pos >> 2) & 0x3FFFu;
-        int32_t x0 = BRK_ULAW[d[k]], x1 = BRK_ULAW[d[k + 1u]], s;
-        s = x0 + (((x1 - x0) * (int32_t)f) >> 14);
-        if (v->gain != 256)                     /* NORMALISE (the edit) */
-            s = clampi((s * v->gain) >> 8, -32767, 32767);
-        s = sat(s * v->drive) & m;
-        v->g += v->gstep;
-        if ((v->gstep > 0 && v->g > v->gtgt) || (v->gstep < 0 && v->g < v->gtgt))
-            v->g = v->gtgt;
-        out[i] += (s * v->g) >> 15;
-        if (v->rev) {
-            if (v->pos <= v->lo + v->step) { v->on = 0; break; }
-            v->pos -= v->step;
-        } else {
-            v->pos += v->step;
-            if (v->pos >= v->hi) { v->on = 0; break; }
-        }
-    }
-    if (v->g <= 0 && v->gtgt == 0)
-        v->on = 0;
-}
-
 /* ---- a note on track t (k: the cell's two tricks) */
 static const tricks_t NO_TRICKS = {FX_NONE, FX_NONE, 0, 0};
 static uint8_t tb_inner;                        /* a table's HIT plays the note: the table goes on */
@@ -457,14 +394,14 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
     if (nm == NM_NOTE) {
         int32_t gv;
         int fg = trick(k, FX_GLIDE, &gv);
-        int glide = (fg || (e <= E_NOISE && p[P_GLIDE])) && v->stage && v->stage < 4u;
+        int glide = (fg || (e <= E_WAVE && p[P_GLIDE])) && v->stage && v->stage < 4u;
         if (glide) {
             v->ptgt = pt;
             v->glide = fg ? 1 + gv * gv / 6 : 1 + p[P_GLIDE] * p[P_GLIDE] / 6;
         } else {
             v->pitch = v->ptgt = pt;
             v->glide = 0;
-            v->sweep = e <= E_NOISE ? p[P_SWEEP] * 512 : 0;
+            v->sweep = e <= E_WAVE ? p[P_SWEEP] * 512 : 0;
             if (v->env < 6000 && e <= E_WAVE)
                 v->ph = v->ph2 = v->cph[0] = v->cph[1] = v->cph[2] = 0;   /* the same start every time (chip punch), when it cannot click */
         }
@@ -474,7 +411,7 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
                 v->arp_off[i] = CHORDS[sv].off[i];
             v->arp_i = 0;
             v->arp_cnt = 0;
-            v->arp_len = arp_len ? arp_len * 3u / (uint32_t)clampi(e <= E_NOISE ? p[P_ARPV] : 3, 1, 8) : 700u;
+            v->arp_len = arp_len ? arp_len * 3u / (uint32_t)clampi(e <= E_WAVE ? p[P_ARPV] : 3, 1, 8) : 700u;
         }
         if (chord_engine(e) && trick(k, FX_CHORD, &sv)) {   /* (Gabare) ACC: the chord, its notes together */
             const int8_t *o = sv == CHORD_CUSTOM ? chord_custom[t] : sv >= 0 && sv < 14 ? CHORDS[sv].off : 0;
@@ -506,12 +443,6 @@ static void voice_on(uint32_t t, uint32_t note, uint32_t vol, const tricks_t *k,
             sk_note_on(t, note, vol, v->ch_n, v->ch_off);
     } else if (e == E_KIT)
         drum_on(t, cell_idx(note) & 15u, (trick(k, FX_PITCH, &sv) ? sv : 0) + v->tb_tr + (cell_idx(note) >= 16u ? 12 : 0), trick(k, FX_CRUSH, &sv) ? sv : -1);   /* (17..32: the same drum, tuned up) */
-    else {
-        if (nm == NM_SLICE && cell_idx(note) >= 16u) smp_extra = 12;
-        smp_on(t, nm == NM_SLICE ? cell_idx(note) & 15u : note, k);
-    }
-    if (e == E_SAMPLE && nm == NM_NOTE)
-        smp_on(t, note, k);
     v->note = (uint8_t)note;
     if (!(v->glide && v->stage) || v->stage == 4u) {
         v->stage = 1;
@@ -542,8 +473,6 @@ static void voice_cut(uint32_t t)                /* CUT: the note stops now, wha
     voice_off(t);
     drum_choke(&drum[t][0]);
     drum_choke(&drum[t][1]);
-    smp[t][0].gtgt = smp[t][1].gtgt = 0;
-    smp[t][0].gstep = smp[t][1].gstep = -(32767 / 120);
 }
 
 static void tb_stop(uint32_t t)
@@ -572,7 +501,6 @@ static void voice_kill(uint32_t t)               /* the engine changed (t NTRK: 
         tk[t].tb_tr = 0;
         tb_stop(t);
         drum[t][0].on = drum[t][1].on = 0;
-        smp[t][0].on = smp[t][1].on = 0;
         if (t == fm_trk)
             fmn[0].live = fmn[1].live = fmc[0].live = fmc[1].live = fmc[2].live = 0;
     }
@@ -592,10 +520,6 @@ static void tb_apply(uint32_t t, int hit)
         v->vol = (uint8_t)(s->vol & 15u);
         v->volq = (int32_t)v->vol << 16;
     }
-    if (e == E_SAMPLE) {                        /* (the other engines take the pitch in track_chunk) */
-        smpv_t *sv = &smp[t][smp_next[t] ^ 1u];
-        if (sv->on) smp_retune(sv, v->tb_tr);
-    }
     switch (s->fx) {
     case TB_HIT:
         if (hit && v->gate) {
@@ -610,7 +534,6 @@ static void tb_apply(uint32_t t, int hit)
     case TB_SHAPE: v->shape = (uint8_t)clampi(fv, 0, 7); break;
     case TB_CRUSH:
         v->crush = (uint8_t)clampi(fv, 0, 7);
-        if (e == E_SAMPLE) smp[t][smp_next[t] ^ 1u].crush = v->crush;
         if (e == E_KIT) drum[t][drum_next[t] ^ 1u].crush = v->crush;
         break;
     case TB_VSL: v->tb_vsl = (int8_t)clampi(fv, -15, 15); break;
@@ -685,7 +608,7 @@ static void track_chunk(uint32_t t, int32_t *out)
     const int8_t *p = prj.snd[t].p;
     uint32_t e = prj.snd[t].engine, i, dest = (uint32_t)p[P_LFOD];
     int32_t raw[CHUNK], pit, gain, tgt, da, amp, fxa = p[P_FXA];
-    int32_t ton = TON_A[clampi(e == E_KIT ? p[P_KTON] : e == E_SAMPLE ? p[P_STON] : p[P_TON], 0, 15)];
+    int32_t ton = TON_A[clampi(e == E_KIT ? p[P_KTON] : p[P_TON], 0, 15)];
     int active = v->stage != 0 || v->amp != 0;
     lfo_chunk(v, p);
     switch (v->stage) {                         /* ADSR, once a chunk */
@@ -715,7 +638,7 @@ static void track_chunk(uint32_t t, int32_t *out)
     v->pitch += v->bend;
     v->pitch = clampi(v->pitch, -48 * 256, 160 * 256);   /* (a long BEND, a table's, stays in range) */
     v->sweep = (int32_t)(((int64_t)v->sweep * 64880) >> 16);   /* tau ~35 ms */
-    pit = v->pitch + v->sweep + ((lv_mask >> t & 1u) ? lv_transpose * 256 : 0) + v->tb_tr * 256;
+    pit = v->pitch + v->sweep + ((lv_mask >> t & 1u) ? lv_transpose * 256 : 0) + v->tb_tr * 256 + midi_bend[t];
     if (v->vib) {
         v->vph += 9350000u;                     /* ~6 Hz */
         pit += (sine(v->vph) * v->vib * 14) >> 15;
@@ -740,18 +663,16 @@ static void track_chunk(uint32_t t, int32_t *out)
         v->volq = clampi(v->volq + (v->vslide + v->tb_vsl) * (int32_t)vsl_k, 0, 15 << 16);
         v->vol = (uint8_t)(v->volq >> 16);
     }
-    if (e <= E_NOISE && active) {
+    if (e <= E_WAVE && active) {
         uint32_t inc, inc2 = 0, duty = 0x80000000u, ph = v->ph, ph2 = v->ph2;
         uint32_t cinc[CHORD_MAX - 1u], cph[CHORD_MAX - 1u], cn = 0, j;   /* (Gabare) ACC's other notes */
         int32_t cg = 32767;
         int32_t m = crush_mask(v->crush), lp = v->lp, det = p[P_DETUNE];
         int uni = (lv_mask >> t & 1u) ? lv_uni : 0;
-        if (e == E_NOISE)
-            pit += 48 * 256;                    /* the noise clock runs four octaves over the note */
         inc = pitch_inc(pit);
-        if (e != E_NOISE && (uni || det))
+        if (uni || det)
             inc2 = uni == 2 ? inc >> 1 : inc + (inc >> 7) + (uint32_t)(((uint64_t)inc * (uint32_t)det) >> 11);
-        if (v->ch_n > 1u && e != E_NOISE && cpu_shed < 2u) {   /* (the governor: the note alone) */
+        if (v->ch_n > 1u && cpu_shed < 2u) {   /* (the governor: the note alone) */
             for (cn = 0; cn + 1u < v->ch_n; cn++) {
                 cinc[cn] = pitch_inc(pit + v->ch_off[cn + 1u] * 256);
                 cph[cn] = v->cph[cn];
@@ -781,7 +702,7 @@ static void track_chunk(uint32_t t, int32_t *out)
                     s += (cph[j] < duty ? 32767 : -32767) + blep(cph[j], cinc[j]) - blep(cph[j] - duty, cinc[j]);
                     cph[j] += cinc[j];
                 }
-            } else if (e == E_WAVE) {
+            } else {
                 const uint8_t *w = WAVES[v->shape & 7u];
                 s = (w[ph >> 27] * 2 - 15) * 2184;
                 ph += inc;
@@ -793,14 +714,6 @@ static void track_chunk(uint32_t t, int32_t *out)
                     s += (w[cph[j] >> 27] * 2 - 15) * 2184;
                     cph[j] += cinc[j];
                 }
-            } else {
-                uint32_t o = ph;
-                ph += inc;
-                if (ph < o) {                   /* one LFSR step per wrap of the noise clock */
-                    uint32_t l = v->lfsr, b = (l ^ (l >> (v->shape ? 6u : 1u))) & 1u;
-                    v->lfsr = (l >> 1) | (b << 14);
-                }
-                s = (v->lfsr & 1u) ? 26000 : -26000;
             }
             if (cn)
                 s = (int32_t)(((int64_t)s * cg) >> 15);
@@ -884,13 +797,6 @@ static void track_chunk(uint32_t t, int32_t *out)
         if (cpu_shed >= 3u) drum[t][drum_next[t]].on = 0;   /* (the governor: the older voice goes) */
         drum_chunk(&drum[t][0], raw);
         drum_chunk(&drum[t][1], raw);
-        if (ton < 32767)
-            for (i = 0; i < CHUNK; i++) { v->lp += (int32_t)(((int64_t)(raw[i] - v->lp) * ton) >> 15); raw[i] = v->lp; }
-        active = 1;
-    } else {
-        if (cpu_shed >= 3u) smp[t][smp_next[t]].on = 0;
-        smp_chunk(&smp[t][0], raw);
-        smp_chunk(&smp[t][1], raw);
         if (ton < 32767)
             for (i = 0; i < CHUNK; i++) { v->lp += (int32_t)(((int64_t)(raw[i] - v->lp) * ton) >> 15); raw[i] = v->lp; }
         active = 1;

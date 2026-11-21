@@ -106,7 +106,6 @@ int main(void)
     prj.grv.len = 3;
     prj.grv.tick[0] = 8; prj.grv.tick[1] = 4; prj.grv.tick[2] = 6;
     prj_sanitize();
-    sed_normalise(5);
     CHECK(prj_save(3) == 0, "v5: the save failed");
     want = prj;                                 /* (as saved: its slot, its CRC) */
     CHECK(slot_valid(3, 0) == 5, "v5: not seen as format 5");
