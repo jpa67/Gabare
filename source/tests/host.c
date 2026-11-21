@@ -79,9 +79,10 @@ static int midi_get(uint8_t *st, uint8_t *d1, uint8_t *d2)
     return 1;
 }
 static uint32_t host_midi_out[3];               /* MIDI out: counts of clock ticks, starts, stops (tests) */
+static uint32_t host_midi_log[64], hml_n;       /* ((Gabare 0.10) every other message: st | d1 << 8 | d2 << 16) */
 static void midi_send(uint32_t st, uint32_t d1, uint32_t d2)
 {
-    (void)d1; (void)d2;
+    if (st < 0xF8) { host_midi_log[hml_n++ % 64u] = st | d1 << 8 | d2 << 16; printf("%6u ms  midi out %02X %u %u\n", fm1_ms, st, d1, d2); }
     if (st == 0xF8) host_midi_out[0]++;
     else if (st == 0xFA) { host_midi_out[1]++; printf("%6u ms  midi start\n", fm1_ms); }
     else if (st == 0xFC) { host_midi_out[2]++; printf("%6u ms  midi stop, %u clock ticks\n", fm1_ms, host_midi_out[0]); }

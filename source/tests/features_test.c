@@ -411,6 +411,23 @@ int main(void)
         kw_flash_known = 1;
         printf("10. flash chip: INFO says known / unknown; on an unknown one DX BEGIN answers 3, nothing written\n");
     }
+    {   /* 11. (Gabare 0.10) MODE PC: INFO says it, SysEx 24 turns it on (the PC MODE page, the song stopped) and off
+         * (all notes off to the computer, back to TRACKS) */
+        static const uint8_t ON[1] = {1}, OFF[1] = {0};
+        uint8_t d[64];
+        uint32_t nd, n0;
+        kw_handle(KW_INFO, 0, 0);
+        nd = last_reply(d, sizeof d);
+        CHECK(nd >= 28u && d[27] == 1u, "11. INFO: MODE PC (byte 27 = %u, %u bytes)", nd > 27u ? d[27] : 9u, nd);
+        kw_handle(KW_PCMODE, ON, 1);
+        last_reply(d, sizeof d);
+        CHECK(d[0] == KW_OK && pc_mode && page == PG_PC && !sq_play, "11. SysEx 24 on: rc %u, mode %u, page %u", d[0], pc_mode, page);
+        n0 = hml_n;
+        kw_handle(KW_PCMODE, OFF, 1);
+        CHECK(!pc_mode && page == PG_TRACK && hml_n == n0 + 1u && host_midi_log[n0 % 64u] == (0xB0u | 123u << 8),
+              "11. SysEx 24 off: mode %u, page %u, all notes off sent", pc_mode, page);
+        printf("11. MODE PC: INFO says it, SysEx 24 on / off, all notes off at the end\n");
+    }
     if (fails) { printf("features_test: %d failures\n", fails); return 1; }
     printf("features_test: passed\n");
     return 0;

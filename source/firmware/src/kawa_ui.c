@@ -18,11 +18,11 @@
 
 static const char *const PAGE_NAMES[LANG_N][PG_N] = {
     {"PISTES", "GRILLE", "SON", "ENVELOPPE", "MIX", "MAGIE", "GAMME", "CHAINE", "PROJETS", "OPTIONS", "EFFETS", "AIDE", "",
-     "GROOVE", "ENVOIS", "FILTRE", "SEQ FX", "ARPEGE"},
+     "GROOVE", "ENVOIS", "FILTRE", "SEQ FX", "ARPEGE", "MODE PC"},
     {"TRACKS", "GRID", "SOUND", "ENVELOPE", "MIX", "MAGIC", "SCALE", "SONG", "PROJECTS", "OPTIONS", "EFFECTS", "HELP", "",
-     "GROOVE", "SENDS", "FILTER", "FX SEQ", "ARPEGGIO"},
+     "GROOVE", "SENDS", "FILTER", "FX SEQ", "ARPEGGIO", "PC MODE"},
     {"PISTAS", "REJILLA", "SONIDO", "ENVOLVENTE", "MEZCLA", "MAGIA", "ESCALA", "CANCION", "PROYECTOS", "OPCIONES", "EFECTOS",
-     "AYUDA", "", "GROOVE", "ENVIOS", "FILTRO", "SEC FX", "ARPEGIO"}};
+     "AYUDA", "", "GROOVE", "ENVIOS", "FILTRO", "SEC FX", "ARPEGIO", "MODO PC"}};
 #define PAGE_NAME PAGE_NAMES[lang]
 static uint8_t page = PG_BOOT, page_back = PG_TRACK, help_pg = PG_TRACK;
 static uint8_t cur_row, cur_trk, ui_pat, rec, snd_page, grid_page, fx_bank, fx_sticky, mg_scope, follow = 1, fm_op = 1;
@@ -73,6 +73,8 @@ static struct { uint8_t lang, theme; int8_t oct; uint8_t clock, font, metro, mvo
                                                                                           * arpeggiator's; (0.9) aswing achance: ARPEGGIO 2's) */   /* kept in the settings sector (0.2 kept
                                                                                           * the first four bytes, 0.4 five) */
 static uint8_t set_dirty;
+static void pc_enter(void);                     /* ((Gabare 0.10) MODE PC, below ui_input) */
+static void draw_pc(void);
 static uint32_t set_ms;
 static void set_changed(void)
 {
@@ -1749,12 +1751,12 @@ static void draw_song(void)
 
 /* ---- PROJECTS: a menu. SELECT moves, OCT+ OK, OCT- back. The song is kept in a slot (1..3): SAVE writes
  * it there again, SAVE AS picks a slot and a name; slot 0 is the autosave */
-enum { PM_NEW, PM_SAVE, PM_SAVEAS, PM_LOAD, PM_RENAME, PM_DEMO, PM_N };
+enum { PM_NEW, PM_SAVE, PM_SAVEAS, PM_LOAD, PM_RENAME, PM_DEMO, PM_PC, PM_N };   /* ((Gabare 0.10) PM_PC: MODE PC) */
 static const char *const PM_NAMES[LANG_N][PM_N] = {
-    {"NOUVEAU MORCEAU", "SAUVER", "SAUVER SOUS...", "CHARGER...", "RENOMMER...", "DEMO"},
-    {"NEW SONG", "SAVE", "SAVE AS...", "LOAD...", "RENAME...", "DEMO"},
-    {"NUEVA CANCION", "GUARDAR", "GUARDAR COMO...", "CARGAR...", "RENOMBRAR...", "DEMO"}};
-static const uint8_t PM_ICON[PM_N] = {ICO_NOTE, ICO_DOWN, ICO_COPY, ICO_UP, ICO_SHAPE, ICO_PLAY};
+    {"NOUVEAU MORCEAU", "SAUVER", "SAUVER SOUS...", "CHARGER...", "RENOMMER...", "DEMO", "MODE PC"},
+    {"NEW SONG", "SAVE", "SAVE AS...", "LOAD...", "RENAME...", "DEMO", "PC MODE"},
+    {"NUEVA CANCION", "GUARDAR", "GUARDAR COMO...", "CARGAR...", "RENOMBRAR...", "DEMO", "MODO PC"}};
+static const uint8_t PM_ICON[PM_N] = {ICO_NOTE, ICO_DOWN, ICO_COPY, ICO_UP, ICO_SHAPE, ICO_PLAY, ICO_RIGHT};
 enum { PMS_MENU, PMS_SLOT, PMS_NAME, PMS_ASK };
 static uint8_t pm_sel = PM_SAVE, pm_state, pm_act, pm_slot = 1, proj_cur = 0xFF, nm_pos;
 static char nm_buf[16];
@@ -1799,17 +1801,17 @@ static void draw_proj(void)
     }
     if (pm_state == PMS_MENU) {
         for (k = 0; k < PM_N; k++) {
-            int32_t y = 46 + (int32_t)k * 25;
+            int32_t y = 46 + (int32_t)k * 21;   /* ((Gabare 0.10) seven rows: MODE PC too) */
             int on = k == pm_sel;
-            if (!g_vis(y, 23)) continue;
-            g_rrect(6, y, 228, 22, on ? pc : C_BG2);
-            g_icon(14, y + 7, PM_ICON[k], on ? C_INK : pc, 1);
-            g_text(28, y + 4, PM_NAMES[lang][k], on ? C_INK : C_TXT, T_CROP | T_BOLD);
+            if (!g_vis(y, 20)) continue;
+            g_rrect(6, y, 228, 19, on ? pc : C_BG2);
+            g_icon(14, y + 6, PM_ICON[k], on ? C_INK : pc, 1);
+            g_text(28, y + 2, PM_NAMES[lang][k], on ? C_INK : C_TXT, T_CROP | T_BOLD);
             if (k == PM_SAVE) {
                 s[0] = 0;
                 if (proj_cur >= 1u && proj_cur < NSLOT) { str_cat(s, "> "); fmt_u(s + 2, proj_cur, 0); }
                 else str_cat(s, "> ?");
-                g_text(226 - g_text_w(s), y + 4, s, on ? C_INK : C_FAINT, T_CROP);
+                g_text(226 - g_text_w(s), y + 2, s, on ? C_INK : C_FAINT, T_CROP);
             }
         }
     } else if (pm_state == PMS_SLOT) {
@@ -2203,6 +2205,7 @@ static void draw_all(void)
     case PG_FILT: draw_filt(); break;
     case PG_FXSEQ: draw_fxseq(); break;
     case PG_ARP: draw_arp(); break;
+    case PG_PC: draw_pc(); break;
     case PG_HELP: draw_help(); break;
     }
     draw_first();
@@ -2769,6 +2772,7 @@ static void pm_ok(void)                         /* OCT+ on the PROJECTS page */
     switch (pm_state) {
     case PMS_MENU:
         pm_act = pm_sel;
+        if (pm_sel == PM_PC) { pc_enter(); break; }   /* ((0.10) nothing of the song changes: no question) */
         if (pm_sel == PM_SAVE && proj_cur >= 1u && proj_cur < NSLOT) { pm_slot = proj_cur; pm_do(PM_SAVE); break; }
         if (pm_sel == PM_SAVE) pm_act = PM_SAVEAS;
         if (pm_act == PM_SAVEAS || pm_act == PM_LOAD) {
@@ -3241,6 +3245,96 @@ static void preset_turn(int32_t d)
     preset_load(t, k, 0);
 }
 
+/* ---- (Gabare 0.10) MODE PC: the FM-1 a MIDI keyboard for Fm1Studio. Gabare plays nothing (the song stops, the voices
+ * go); the keys, the buttons and the encoders go out over USB as the FM1-DAW protocol has them (Fm1Studio reads them:
+ * Device/Fm1Input.cs): a key Note On / Off channel 1, note 53 + its number; a button Note channel 2, its number (0 OCT-
+ * .. 13 REC); encoder e CC 16 + e on channel 1, 64 + its steps. HOME held 2 s comes back (its tap still goes out). In:
+ * the PROJECTS menu, or SysEx 24 (kawa_sysex.c) */
+#define PC_EXIT_MS 2000u
+static uint8_t pc_mode, pc_home;
+static uint32_t pc_home_ms;
+static char pc_last[24];
+static void pc_drain(void)                     /* (what the encoders and keys had: not sent) */
+{
+    uint32_t e;
+    for (e = 0; e < 7u; e++) (void)fm1_enc_take(e);
+    (void)fm1_input_note_edges();
+    prev_keys = fm1_in.notes;
+}
+static void pc_enter(void)
+{
+    if (pc_mode) return;
+    if (sq_play) sq_req = 2;
+    ev_push(EV_ALLOFF, 0, 0, 0, 0, 0);          /* (every voice goes, the arpeggio too) */
+    pc_mode = 1;
+    pc_home = 0;
+    pc_last[0] = 0;
+    pc_drain();
+    set_page(PG_PC);
+}
+static void pc_exit(void)
+{
+    if (!pc_mode) return;
+    midi_send(0xB0, 123, 0);                    /* (all notes off, at the computer) */
+    pc_mode = 0;
+    pc_drain();
+    pm_state = PMS_MENU;
+    set_page(PG_TRACK);
+    toast(TR("FIN DU MODE PC", "PC MODE OFF", "FIN MODO PC"));
+}
+static void pc_note(const char *what, uint32_t n)   /* the page's last event */
+{
+    pc_last[0] = 0;
+    fmt_u(str_cat(pc_last, what), n, 0);
+}
+static void pc_input(uint32_t b, uint32_t rel)
+{
+    uint32_t i, e, edges = fm1_input_note_edges(), keys = fm1_in.notes | edges;
+    uint32_t down = keys & ~prev_keys, up = (prev_keys | edges) & ~fm1_in.notes;
+    int32_t d;
+    prev_keys = fm1_in.notes;
+    for (i = 0; i < 27u; i++) {
+        if (down >> i & 1u) { midi_send(0x90, 53u + i, 100); pc_note(TR("TOUCHE ", "KEY ", "TECLA "), i + 1u); }
+        if (up >> i & 1u) midi_send(0x80, 53u + i, 0);
+    }
+    for (i = 0; i < 14u; i++) {
+        if (b >> i & 1u) {
+            midi_send(0x91, i, 127);
+            pc_note(TR("BOUTON ", "BUTTON ", "BOTON "), i);
+            if (i == BTN_HOME) { pc_home = 1; pc_home_ms = fm1_ms; }
+        }
+        if (rel >> i & 1u) {
+            midi_send(0x81, i, 0);
+            if (i == BTN_HOME) pc_home = 0;
+        }
+    }
+    for (e = 0; e < 7u; e++)
+        while ((d = fm1_enc_take(e)) != 0) {
+            int32_t s = d > 63 ? 63 : d < -63 ? -63 : d;
+            midi_send(0xB0, 16u + e, (uint32_t)(64 + s));
+            pc_note(TR("POTARD ", "KNOB ", "PERILLA "), e);
+            d -= s;
+            if (!d) break;
+        }
+    if (pc_home && fm1_ms - pc_home_ms > PC_EXIT_MS) {   /* HOME held: back to Gabare */
+        midi_send(0x81, BTN_HOME, 0);
+        pc_exit();
+    }
+}
+static void draw_pc(void)
+{
+    uint16_t pc = PAGE_COL[PG_PC];
+    if (g_vis(20, 204)) g_rect(0, 20, 240, 204, C_BG);
+    g_rrect(8, 30, g_text_w(TR("MODE PC", "PC MODE", "MODO PC")) + 16, 28, pc);
+    g_text(16, 36, TR("MODE PC", "PC MODE", "MODO PC"), C_INK, T_BOLD | T_CROP);
+    g_text(8, 72, TR("LE FM-1 JOUE LE PC", "THE FM-1 PLAYS THE PC", "EL FM-1 TOCA EL PC"), C_TXT, T_BOLD | T_CROP);
+    g_text(8, 92, TR("TOUCHES, POTARDS, BOUTONS:", "KEYS, KNOBS, BUTTONS:", "TECLAS, PERILLAS, BOTONES:"), C_MID, T_CROP);
+    g_text(8, 106, TR("TOUT PART VERS FM1STUDIO", "ALL GO TO FM1STUDIO", "TODO VA A FM1STUDIO"), C_MID, T_CROP);
+    if (pc_last[0]) g_text(8, 134, pc_last, C_GOLD, T_BOLD | T_CROP);
+    g_text(8, 196, TR("HOME TENU 2 S: SORTIR", "HOLD HOME 2 S: EXIT", "HOME 2 S: SALIR"), C_FAINT, T_CROP);
+    hint_none(0); hint_none(1); hint_none(2); hint_none(3);   /* (the knobs are the computer's) */
+}
+
 static void ui_input(void)
 {
     uint32_t rel, b = fm1_input_edges(&rel), i;
@@ -3256,6 +3350,10 @@ static void ui_input(void)
             (void)fm1_input_note_edges();
             set_page(PG_TRACK);
         }
+        return;
+    }
+    if (pc_mode) {                              /* ((Gabare 0.10) MODE PC: all of it goes to the computer */
+        pc_input(b, rel);
         return;
     }
     for (i = 0; i < 14u; i++) {
