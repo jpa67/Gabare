@@ -11,12 +11,12 @@ Omnipotard (the tracker, its six tracks, its effects, its tools, its installer) 
 firmwares of the Felucca family, an arpeggiator on the keys, and DX7 banks on the FM track. Everything KAWA's manual
 says holds for Gabare. This first part says what Gabare adds; the rest is KAWA's text.
 
-> **Status: 0.8, beta.** 0.1 to 0.7 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
+> **Status: 0.9, beta.** 0.1 to 0.8 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
 > measured). STRING, ADD, the arpeggiator and DX7 banks (0.3) pass KAWA's tests and the simulator, not yet all of them
 > on the FM-1. 0.4 reads the DX7 bank back over USB (SysEx command 19, see `kawa_sysex.c`), 0.5 adds the FM-1's 128
 > original voices to the FM track, 0.6 the ACC cell effect (chords on a track; its load on the FM-1 is still to be
 > measured), 0.7 reading the song back over USB (SysEx command 20), 0.8 receiving a song from a computer (SysEx commands
-> 21 to 23: the song in RAM is autosaved first and comes back if the new one does not arrive whole; SAVE keeps the new one).
+> 21 to 23: the song in RAM is autosaved first and comes back if the new one does not arrive whole; SAVE keeps the new one), 0.9 refusing to write to an unknown flash chip.
 
 ## Gabare compared with KAWA
 
@@ -32,9 +32,10 @@ Gabare starts from KAWA 0.10. Anything not listed here is KAWA as it is; in the 
 | FM track (**FM SOUND**) | KAWA's 12 FM sounds | also the **FM-1's 128 original voices** (0.5) and a **DX7 bank** of 32 voices (0.3) | 0.3 |
 | Song over USB | — | read by a computer (0.7), received from one (0.8) | 0.7 |
 | Package | `kawa-X.Y.fwsc`, identity `FM-1_957` | `gabare-X.Y.fwsc`, identity `FM-1_947`, boot screen GABARE | 0.1 |
+| Flash chip | both of the FM-1's (since KAWA 0.8): the first units' Puya P25Q80, the UC25HQ80 of those sold from late 2026; any other: no save, no update | the same, and on an unknown chip sending samples or a DX7 bank is refused too | 0.9 |
 
 SysEx commands added to KAWA's 1 to 6 (same frame, see the top of `source/firmware/src/kawa_sysex.c`): INFO says
-more (`GABARE`, engines, bank, song size and format, whether a song is accepted); 16 to 18 write a DX7 bank (0.3),
+more (`GABARE`, engines, bank, song size and format, whether a song is accepted, whether the flash chip is known); 16 to 18 write a DX7 bank (0.3),
 19 reads it back (0.4); 20 reads the song (0.7); 21 to 23 receive a song (0.8). Pages added: [dx7.html](dx7.html)
 (send a DX7 bank) and [aide.html](aide.html) (the cheat sheet, in French); [index.html](index.html) is KAWA's
 installer, in French, taking the newest `gabare-*.fwsc`. Projects keep KAWA's format (5): KAWA's projects, samples and

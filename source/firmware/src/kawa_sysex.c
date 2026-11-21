@@ -27,6 +27,9 @@
  *                                                         after 10 s without a frame, the autosave comes back)
  * The song received is not saved into a slot: SAVE on the FM-1 does (the autosave keeps it, with its '*').
  * INFO's last byte (Gabare): 1 a DX7 bank is there.
+ * (Gabare 0.9) INFO's byte 26: 1, the flash chip is one the FM-1 ships with (FL_CHIP_OK: the Puya 0x856014 or the
+ * UC25HQ80 0xB36014); 0, an unknown chip: BEGIN, ERASE and DX BEGIN answer 3 (flash) and nothing is written, as the
+ * saves, the USB rescue and the update loader already do (and SLOOP 2.8.5: an unknown chip is left alone).
  * Codes: 0 ok, 1 bad arguments, 2 busy (playing), 3 flash, 4 CRC, 5 no session / out of order. */
 enum { KW_INFO = 1, KW_BEGIN, KW_WRITE, KW_END, KW_ERASE, KW_LIST, KW_DXBEGIN = 16, KW_DXWRITE, KW_DXEND, KW_DXREAD, KW_PRJREAD, KW_PRJBEGIN, KW_PRJWRITE, KW_PRJEND };
 #define KW_DXCHUNK 64u                          /* (Gabare) DX READ: 69 bytes a reply, under kw_reply's 100 */
@@ -78,6 +81,7 @@ static int kw_prog(uint32_t off, const uint8_t *p, uint32_t n)
 }
 static int kw_read(uint32_t off, void *p, uint32_t n) { memcpy(p, kw_flash + off - USR_AT, n); return 0; }
 static const uint8_t *kw_xip(uint32_t off) { return kw_flash + off - USR_AT; }
+static uint8_t kw_flash_known = 1;              /* (Gabare 0.9) the stand-in is a known chip; a test sets 0 */
 static void kw_hold_wait(void) {}
 #if defined(DINGHY_HOST)
 static void kw_send(const uint8_t *p, uint32_t n)   /* the reply, for the test script */
@@ -94,6 +98,7 @@ static void kw_send(const uint8_t *p, uint32_t n) { (void)p; (void)n; }
 static void kw_send(const uint8_t *p, uint32_t n) { ota_wire_send(p, n); }
 static int kw_erase(uint32_t off) { uint32_t took; fm1_wdt_feed(); return fl_erase4k(off, &took); }
 static int kw_prog(uint32_t off, const uint8_t *p, uint32_t n) { return fl_write(off, p, n); }
+#define kw_flash_known flash_ok                 /* (Gabare 0.9) platform.c: FL_CHIP_OK at power-on */
 static int kw_read(uint32_t off, void *p, uint32_t n) { return st_read(off, p, n); }
 static const uint8_t *kw_xip(uint32_t off) { return (const uint8_t *)FM1_XIP(off); }
 static void kw_hold_wait(void)                  /* two blocks: the interrupt is silent, the DMA plays zeros */
@@ -221,11 +226,13 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         r[21] = (uint8_t)sizeof prj; r[22] = (uint8_t)(sizeof prj >> 8); r[23] = (uint8_t)(sizeof prj >> 16);   /* (0.7) */
         r[24] = PRJ_VERSION;
         r[25] = 1;                              /* (0.8) it takes a song (PRJ WRITE) */
-        kw_reply(cmd, r, 26);
+        r[26] = kw_flash_known ? 1u : 0u;       /* (0.9) a flash chip it knows */
+        kw_reply(cmd, r, 27);
         return;
     }
     case KW_BEGIN:
         if (n != 1u) { r[0] = KW_EARGS; break; }
+        if (!kw_flash_known) { r[0] = KW_EFLASH; break; }   /* (Gabare 0.9) an unknown chip: left alone */
         if (kw_slot != 0xFFu && kw_slot != k) kw_end_session();
         if ((r[0] = (uint8_t)kw_take_slot(k)) != KW_OK) break;
         if (kw_erase(USR_AT_SLOT(k))) { r[0] = KW_EFLASH; kw_end_session(); break; }   /* the header first: empty */
@@ -277,6 +284,7 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
     }
     case KW_ERASE:
         if (n != 1u) { r[0] = KW_EARGS; break; }
+        if (!kw_flash_known) { r[0] = KW_EFLASH; break; }   /* (Gabare 0.9) */
         if ((r[0] = (uint8_t)kw_take_slot(k)) != KW_OK) break;
         for (i = 0; i < USR_SIZE; i += 0x1000u)
             if (kw_erase(USR_AT_SLOT(k) + i)) { r[0] = KW_EFLASH; break; }
@@ -296,6 +304,7 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         return;
     case KW_DXBEGIN:                            /* (Gabare) the DX7 bank */
         if (n != 1u || k != 0u) { r[0] = KW_EARGS; break; }
+        if (!kw_flash_known) { r[0] = KW_EFLASH; break; }   /* (0.9) an unknown chip: the bank stays as it is */
         if (sq_play) { r[0] = KW_EBUSY; break; }
         if (kw_slot != 0xFFu) kw_end_session();
         dx_ok = 0;                              /* (nothing reads it from now on: FM SOUND shows KAWA's) */

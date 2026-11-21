@@ -12,11 +12,12 @@ synthèse pris à deux firmwares de la famille Felucca, un arpégiateur au clavi
 Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare change, [en bref](#gabare-par-rapport-à-kawa) puis en
 détail ; la suite est le texte de KAWA.
 
-> **État : 0.8, bêta.** La 0.1 à la 0.7 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
+> **État : 0.9, bêta.** La 0.1 à la 0.8 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
 > simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
 > et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB, la 0.5 ajoute les 128
 > voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste ; sa charge sur le FM-1 reste
-> à mesurer), la 0.7 la relecture du morceau par USB, la 0.8 son envoi depuis un ordinateur. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> à mesurer), la 0.7 la relecture du morceau par USB, la 0.8 son envoi depuis un ordinateur, la 0.9 le refus d'écrire sur une
+> puce flash inconnue. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
 > avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
 
 | | | |
@@ -42,6 +43,7 @@ dans [Ce que Gabare ajoute](#ce-que-gabare-ajoute).
 | Morceau par USB | — | relu par l'ordinateur (0.7), reçu de l'ordinateur à la place de celui en mémoire (0.8) | 0.7 |
 | Démarrage | KAWA | GABARE, puis KAWA by Omnipotard et les moteurs de Skiff et de JIANT | 0.1 |
 | Paquet | `kawa-X.Y.fwsc`, identité `FM-1_957` | `gabare-X.Y.fwsc`, identité `FM-1_947` | 0.1 |
+| Puce flash | les deux du FM-1 (depuis KAWA 0.8) : la Puya P25Q80 des premiers, l'UC25HQ80 de ceux vendus depuis fin 2026 ; une autre : rien n'est écrit, ni sauvegarde ni mise à jour | de même, et sur une puce inconnue l'envoi de samples et de banque DX7 est refusé aussi | 0.9 |
 
 ### Par USB : les commandes SysEx en plus
 
@@ -50,7 +52,7 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
 
 | Commande | Ce qu'elle fait | Depuis |
 | --- | --- | --- |
-| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8) | 0.1 |
+| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8), si sa puce flash est connue (0.9) | 0.1 |
 | 16, 17, 18 DX BEGIN, WRITE, END | écrire une banque DX7 de 32 voix dans la flash (séquenceur arrêté ; contrôle CRC) | 0.3 |
 | 19 DX READ | relire la banque, 64 octets à la fois | 0.4 |
 | 20 PRJ READ | relire le morceau en mémoire, sauvé ou non, 64 octets à la fois (même pendant la lecture) | 0.7 |

@@ -51,6 +51,13 @@ static void start(void)
     sq_req = 1;
 }
 
+static uint32_t last_reply(uint8_t *d, uint32_t max)   /* (Gabare 0.9) the last SysEx reply, unpacked */
+{
+    uint32_t w = 5;
+    while (w < sizeof kw_wire && kw_wire[w] != 0xF7u) w++;
+    return kw_unpack7(kw_wire + 5, w - 5u, d, max);
+}
+
 int main(void)
 {
     uint32_t i, k;
@@ -361,6 +368,38 @@ int main(void)
         app_init();
         CHECK(g_font == FN_8BIT, "9. the font chosen did not come back (%u)", g_font);
         printf("9. settings: 0.2's keep FR and the theme, font DOUCE; new: EN, DOUCE; a choice is kept\n");
+    }
+    {   /* 10. (Gabare 0.9) the flash chip: INFO says if it is known; on an unknown one, samples and the DX7 bank
+         * are refused and nothing is written (as the saves, the USB rescue and the update loader) */
+        static const uint8_t SLOT0[1] = {0};
+        uint8_t d[64];
+        uint32_t nd;
+        sq_req = 2;
+        block();
+        kw_handle(KW_INFO, 0, 0);
+        nd = last_reply(d, sizeof d);
+        CHECK(nd >= 27u && d[26] == 1u, "10. INFO on a known chip: %u bytes, byte 26 = %u (want 27, 1)", nd, nd > 26u ? d[26] : 0u);
+        kw_flash_known = 0;
+        memset(kw_flash + (USR_AT_SLOT(0) - USR_AT), 0x5A, 0x1000u);
+        memset(kw_flash + (DX_AT - USR_AT), 0x5A, 0x1000u);
+        kw_handle(KW_INFO, 0, 0);
+        nd = last_reply(d, sizeof d);
+        CHECK(nd >= 27u && d[26] == 0u, "10. INFO on an unknown chip: byte 26 = %u (want 0)", nd > 26u ? d[26] : 9u);
+        kw_handle(KW_BEGIN, SLOT0, 1);
+        last_reply(d, sizeof d);
+        CHECK(d[0] == KW_EFLASH, "10. sample BEGIN on an unknown chip: rc %u (want 3)", d[0]);
+        kw_handle(KW_ERASE, SLOT0, 1);
+        last_reply(d, sizeof d);
+        CHECK(d[0] == KW_EFLASH, "10. sample ERASE on an unknown chip: rc %u (want 3)", d[0]);
+        kw_handle(KW_DXBEGIN, SLOT0, 1);
+        last_reply(d, sizeof d);
+        CHECK(d[0] == KW_EFLASH, "10. DX BEGIN on an unknown chip: rc %u (want 3)", d[0]);
+        CHECK(kw_flash[USR_AT_SLOT(0) - USR_AT] == 0x5Au && kw_flash[USR_AT_SLOT(0) - USR_AT + 0xFFFu] == 0x5Au &&
+              kw_flash[DX_AT - USR_AT] == 0x5Au && kw_flash[DX_AT - USR_AT + 0xFFFu] == 0x5Au,
+              "10. an unknown chip was written to");
+        CHECK(kw_slot == 0xFFu && !audio_hold, "10. a session was left open (slot %u, hold %u)", kw_slot, audio_hold);
+        kw_flash_known = 1;
+        printf("10. flash chip: INFO says known / unknown; on an unknown one BEGIN, ERASE, DX BEGIN answer 3, nothing written\n");
     }
     if (fails) { printf("features_test: %d failures\n", fails); return 1; }
     printf("features_test: passed\n");
