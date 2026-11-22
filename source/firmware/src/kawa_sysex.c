@@ -26,7 +26,7 @@
  *  22 PRJ WRITE 0 off(3 B LE) data   -> rc, 0, off       (off a multiple of 256, in order; data <= 256 B, into RAM)
  *  23 PRJ END 0                      -> rc, 0            (whole, its magic, format and CRC right: it plays; else, and
  *                                                         after 10 s without a frame, the autosave comes back)
- * (Gabare 0.10) MODE PC, the FM-1 a MIDI keyboard for the computer (kawa_ui.c pc_input; INFO's byte 27: 1, it has it):
+ * (Gabare 0.9) MODE PC, the FM-1 a MIDI keyboard for the computer (kawa_ui.c pc_input; INFO's byte 27: 1, it has it):
  *  24 PC MODE on (1) / off (0)        -> rc, on
  * The song received is not saved into a slot: SAVE on the FM-1 does (the autosave keeps it, with its '*').
  * INFO's last byte (Gabare): 1 a DX7 bank is there.
@@ -193,14 +193,14 @@ static void kw_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         r[24] = PRJ_VERSION;
         r[25] = 1;                              /* (0.8) it takes a song (PRJ WRITE) */
         r[26] = kw_flash_known ? 1u : 0u;       /* (0.9) a flash chip it knows */
-        r[27] = 1;                              /* (0.10) it has MODE PC (24) */
+        r[27] = 1;                              /* (0.9) it has MODE PC (24) */
         kw_reply(cmd, r, 28);
         return;
     }
     case KW_BEGIN: case KW_WRITE: case KW_END: case KW_ERASE: case KW_LIST:
         r[0] = KW_EARGS;                        /* ((Gabare 0.9) KAWA's user samples: gone with SAMPLE) */
         break;
-    case KW_PCMODE:                             /* (Gabare 0.10) MODE PC on / off */
+    case KW_PCMODE:                             /* (Gabare 0.9) MODE PC on / off */
         if (n != 1u || k > 1u) { r[0] = KW_EARGS; break; }
         if (k) pc_enter(); else pc_exit();
         r[1] = pc_mode;

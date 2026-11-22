@@ -411,7 +411,7 @@ int main(void)
         kw_flash_known = 1;
         printf("10. flash chip: INFO says known / unknown; on an unknown one DX BEGIN answers 3, nothing written\n");
     }
-    {   /* 11. (Gabare 0.10) MODE PC: INFO says it, SysEx 24 turns it on (the PC MODE page, the song stopped) and off
+    {   /* 11. (Gabare 0.9) MODE PC: INFO says it, SysEx 24 turns it on (the PC MODE page, the song stopped) and off
          * (all notes off to the computer, back to TRACKS) */
         static const uint8_t ON[1] = {1}, OFF[1] = {0};
         uint8_t d[64];

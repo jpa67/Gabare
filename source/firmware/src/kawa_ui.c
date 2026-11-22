@@ -73,7 +73,7 @@ static struct { uint8_t lang, theme; int8_t oct; uint8_t clock, font, metro, mvo
                                                                                           * arpeggiator's; (0.9) aswing achance: ARPEGGIO 2's) */   /* kept in the settings sector (0.2 kept
                                                                                           * the first four bytes, 0.4 five) */
 static uint8_t set_dirty;
-static void pc_enter(void);                     /* ((Gabare 0.10) MODE PC, below ui_input) */
+static void pc_enter(void);                     /* ((Gabare 0.9) MODE PC, below ui_input) */
 static void draw_pc(void);
 static uint32_t set_ms;
 static void set_changed(void)
@@ -1751,7 +1751,7 @@ static void draw_song(void)
 
 /* ---- PROJECTS: a menu. SELECT moves, OCT+ OK, OCT- back. The song is kept in a slot (1..3): SAVE writes
  * it there again, SAVE AS picks a slot and a name; slot 0 is the autosave */
-enum { PM_NEW, PM_SAVE, PM_SAVEAS, PM_LOAD, PM_RENAME, PM_DEMO, PM_PC, PM_N };   /* ((Gabare 0.10) PM_PC: MODE PC) */
+enum { PM_NEW, PM_SAVE, PM_SAVEAS, PM_LOAD, PM_RENAME, PM_DEMO, PM_PC, PM_N };   /* ((Gabare 0.9) PM_PC: MODE PC) */
 static const char *const PM_NAMES[LANG_N][PM_N] = {
     {"NOUVEAU MORCEAU", "SAUVER", "SAUVER SOUS...", "CHARGER...", "RENOMMER...", "DEMO", "MODE PC"},
     {"NEW SONG", "SAVE", "SAVE AS...", "LOAD...", "RENAME...", "DEMO", "PC MODE"},
@@ -1801,7 +1801,7 @@ static void draw_proj(void)
     }
     if (pm_state == PMS_MENU) {
         for (k = 0; k < PM_N; k++) {
-            int32_t y = 46 + (int32_t)k * 21;   /* ((Gabare 0.10) seven rows: MODE PC too) */
+            int32_t y = 46 + (int32_t)k * 21;   /* ((Gabare 0.9) seven rows: MODE PC too) */
             int on = k == pm_sel;
             if (!g_vis(y, 20)) continue;
             g_rrect(6, y, 228, 19, on ? pc : C_BG2);
@@ -2772,7 +2772,7 @@ static void pm_ok(void)                         /* OCT+ on the PROJECTS page */
     switch (pm_state) {
     case PMS_MENU:
         pm_act = pm_sel;
-        if (pm_sel == PM_PC) { pc_enter(); break; }   /* ((0.10) nothing of the song changes: no question) */
+        if (pm_sel == PM_PC) { pc_enter(); break; }   /* ((0.9) nothing of the song changes: no question) */
         if (pm_sel == PM_SAVE && proj_cur >= 1u && proj_cur < NSLOT) { pm_slot = proj_cur; pm_do(PM_SAVE); break; }
         if (pm_sel == PM_SAVE) pm_act = PM_SAVEAS;
         if (pm_act == PM_SAVEAS || pm_act == PM_LOAD) {
@@ -3245,7 +3245,7 @@ static void preset_turn(int32_t d)
     preset_load(t, k, 0);
 }
 
-/* ---- (Gabare 0.10) MODE PC: the FM-1 a MIDI keyboard for Fm1Studio. Gabare plays nothing (the song stops, the voices
+/* ---- (Gabare 0.9) MODE PC: the FM-1 a MIDI keyboard for Fm1Studio. Gabare plays nothing (the song stops, the voices
  * go); the keys, the buttons and the encoders go out over USB as the FM1-DAW protocol has them (Fm1Studio reads them:
  * Device/Fm1Input.cs): a key Note On / Off channel 1, note 53 + its number; a button Note channel 2, its number (0 OCT-
  * .. 13 REC); encoder e CC 16 + e on channel 1, 64 + its steps. HOME held 2 s comes back (its tap still goes out). In:
@@ -3352,7 +3352,7 @@ static void ui_input(void)
         }
         return;
     }
-    if (pc_mode) {                              /* ((Gabare 0.10) MODE PC: all of it goes to the computer */
+    if (pc_mode) {                              /* ((Gabare 0.9) MODE PC: all of it goes to the computer */
         pc_input(b, rel);
         return;
     }
