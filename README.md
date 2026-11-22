@@ -11,13 +11,13 @@ Omnipotard (the tracker, its six tracks, its effects, its tools, its installer) 
 firmwares of the Felucca family, an arpeggiator on the keys, and DX7 banks on the FM track. Everything KAWA's manual
 says holds for Gabare. This first part says what Gabare adds; the rest is KAWA's text.
 
-> **Status: 0.9, beta.** 0.1 to 0.8 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
+> **Status: 0.10, beta.** 0.1 to 0.8 were tried on a real FM-1 (ANALOG measured against the simulator, PHYS's load
 > measured). STRING, ADD, the arpeggiator and DX7 banks (0.3) pass KAWA's tests and the simulator, not yet all of them
 > on the FM-1. 0.4 reads the DX7 bank back over USB (SysEx command 19, see `kawa_sysex.c`), 0.5 adds the FM-1's 128
 > original voices to the FM track, 0.6 the ACC cell effect (chords on a track; its load on the FM-1 is still to be
 > measured), 0.7 reading the song back over USB (SysEx command 20), 0.8 receiving a song from a computer (SysEx commands
 > 21 to 23: the song in RAM is autosaved first and comes back if the new one does not arrive whole; SAVE keeps the new one). 0.9 drops SAMPLE, replaces NOISE with SLOOP's and adds its FM4, SLOOP's 15-mode arpeggiator,
-> INSERT effects and MIDI by channel; it is not tried on an FM-1 yet.
+> INSERT effects and MIDI by channel; 0.10 adds PC MODE (the FM-1 as a keyboard for Fm1Studio). Neither 0.9 nor 0.10 is tried on an FM-1 yet.
 
 ## Gabare compared with KAWA
 
@@ -32,6 +32,7 @@ Gabare starts from KAWA 0.10. Anything not listed here is KAWA as it is; in the 
 | Arpeggio | the ARP cell effect | also an **arpeggiator on the keys** (ARPEGGIO page, written by REC); SLOOP's 15 modes, swing, chance, keys hold (ARPEGGIO 2, 0.9) | 0.3 |
 | Track effect | 9 types | also SLOOP's INSERT types: SOFT, HARD, FOLD, FUZZ, PHASER, FLANGER, CHORUS | 0.9 |
 | MIDI in | clock; notes on the cursor's track, over USB | also the TRS MIDI IN, channels 1-6 on tracks 1-6 (OPTIONS), CCs, Program Change, pitch bend, sustain | 0.9 |
+| PC MODE | — | the FM-1 as a **MIDI keyboard** for Fm1Studio: PROJECTS → PC MODE; keys, buttons and encoders go out over USB, Gabare stays silent; **hold HOME 2 s** to come back | 0.10 |
 | Chords | one note a track | the **ACC** cell effect, up to 4 notes together | 0.6 |
 | FM track (**FM SOUND**) | KAWA's 12 FM sounds | also the **FM-1's 128 original voices** (0.5) and a **DX7 bank** of 32 voices (0.3) | 0.3 |
 | Song over USB | — | read by a computer (0.7), received from one (0.8) | 0.7 |
@@ -40,7 +41,7 @@ Gabare starts from KAWA 0.10. Anything not listed here is KAWA as it is; in the 
 
 SysEx commands added to KAWA's 1 to 6 (same frame, see the top of `source/firmware/src/kawa_sysex.c`): INFO says
 more (`GABARE`, engines, bank, song size and format, whether a song is accepted, whether the flash chip is known); 16 to 18 write a DX7 bank (0.3),
-19 reads it back (0.4); 20 reads the song (0.7); 21 to 23 receive a song (0.8). Pages added: [dx7.html](dx7.html)
+19 reads it back (0.4); 20 reads the song (0.7); 21 to 23 receive a song (0.8); 24 turns PC MODE on or off (0.10). Pages added: [dx7.html](dx7.html)
 (send a DX7 bank) and [aide.html](aide.html) (the cheat sheet, in French); [index.html](index.html) is KAWA's
 installer, in French, taking the newest `gabare-*.fwsc`. Projects keep KAWA's format (5): KAWA's projects, samples and
 settings load as they are. The [web emulator](emulator/index.html) runs Gabare; KAWA's [manual](manual/index.html)
@@ -60,6 +61,10 @@ has The Firmware Hub's workflow build and sign `gabare-0.8.fwsc`.
   keys hold; K2 the
   rate (1/32 .. 1/4 with triplets), K3 the octaves (1..4), K4 the gate; ARP latches the notes. It follows the
   sequencer's rows while playing, and REC writes it into the pattern (one note a row, a DELAY between rows).
+- **PC MODE (0.10).** SAVE (PROJECTS), PC MODE: the sequencer stops, Gabare goes silent, and the keys (notes, channel 1),
+  buttons (notes, channel 2) and encoders (relative CC 16-22) go out over USB in the format Fm1Studio reads, so the FM-1
+  plays and drives it (a track, its firmware sounds, their knobs). Hold HOME 2 s to come back; Fm1Studio's « Continuer
+  sur le PC » reads the song first, then turns PC MODE on (SysEx 24).
 - **Chords: the ACC cell effect.** A cell's note plays a chord (up to 4 notes, the 14 chords of ARP) that shares the
   track's envelope, volume and effect. On PULSE, WAVE, FM, ANALOG, PHASE, LOFI and TRIO; the other engines play the
   note alone. Each extra note costs about one more track of that engine; KAWA's load governor drops them first.

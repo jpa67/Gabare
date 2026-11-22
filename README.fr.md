@@ -13,13 +13,13 @@ banques DX7 sur la piste FM. Depuis la 0.9, Gabare n'a plus le moteur SAMPLE de 
 Tout ce que dit le manuel de KAWA vaut pour Gabare. Cette première partie dit ce que Gabare change, [en bref](#gabare-par-rapport-à-kawa) puis en
 détail ; la suite est le texte de KAWA.
 
-> **État : 0.9, bêta.** La 0.1 à la 0.8 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
+> **État : 0.10, bêta.** La 0.1 à la 0.8 ont été essayées sur un vrai FM-1 (le son ANALOG mesuré contre le
 > simulateur, la charge de PHYS mesurée). CORDE, ADD, l'arpégiateur et les banques DX7 (0.3) passent les tests de KAWA
 > et le simulateur, pas encore tous l'essai sur le FM-1. La 0.4 relit la banque DX7 par USB, la 0.5 ajoute les 128
 > voix d'origine du FM-1 sur la piste FM, la 0.6 l'effet ACC (des accords sur une piste ; sa charge sur le FM-1 reste
 > à mesurer), la 0.7 la relecture du morceau par USB, la 0.8 son envoi depuis un ordinateur. La 0.9 retire SAMPLE, remplace BRUIT
-> par NOISE et ajoute FM4 (de SLOOP), l'arpégiateur à 15 modes, les effets INSERT et le MIDI par canaux ; elle n'est
-> pas encore essayée sur un FM-1. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
+> par NOISE et ajoute FM4 (de SLOOP), l'arpégiateur à 15 modes, les effets INSERT et le MIDI par canaux ; la 0.10
+> ajoute le MODE PC (le FM-1 en clavier pour Fm1Studio). Ni la 0.9 ni la 0.10 ne sont encore essayées sur un FM-1. Un firmware non officiel s'installe à tes risques ; le firmware de M-VAVE se remet
 > avec M-UPGRADE (voir [Revenir au firmware officiel](#revenir-au-firmware-officiel)).
 
 | | | |
@@ -43,6 +43,7 @@ dans [Ce que Gabare ajoute](#ce-que-gabare-ajoute).
 | Arpège | l'effet de case ARP | en plus, un **arpégiateur au clavier** : la page ARPÈGE (**SCL** : GAMME → ARPÈGE → ARPÈGE 2 → MAGIE), qui s'écrit en REC ; ses **15 modes** (ceux de SLOOP, 0.9), son swing, sa chance, la tenue du clavier | 0.3 |
 | Effet d'une piste | AUCUN, FILT BAS, FILT HAU, PASS BND, DISTO, ECRASE, DECIME, ANNEAU, TREMOLO, WAH | en plus les **INSERT** de SLOOP : DOUCE, DURE, PLIE, FUZZ, PHASER, FLANGER, CHORUS (sur l'effet master aussi) | 0.9 |
 | MIDI en entrée | l'horloge ; les notes sur la piste du curseur, par USB | en plus la **prise MIDI IN** du FM-1, les **canaux 1 à 6 sur les pistes 1 à 6** (OPTIONS), les CC (volume, pano, effet, enveloppe, envois, glissé, sustain), Program Change, pitch bend | 0.9 |
+| MODE PC | — | le FM-1 en **clavier MIDI** pour Fm1Studio : PROJETS → **MODE PC** ; ses touches, boutons et encodeurs partent par USB, Gabare se tait ; **HOME tenu 2 s** pour revenir | 0.10 |
 | Accords | une note par piste | l'effet de case **ACC** : jusqu'à 4 notes ensemble, sur CARRÉ, ONDE, FM, ANALOG, PHASE, LOFI, TRIO | 0.6 |
 | Piste FM (**SON FM**) | les 12 sons FM de KAWA | en plus les **128 voix d'origine du FM-1** (0.5) et les 32 voix d'une **banque DX7** envoyée (0.3), gardée dans la flash | 0.3 |
 | Morceau par USB | — | relu par l'ordinateur (0.7), reçu de l'ordinateur à la place de celui en mémoire (0.8) | 0.7 |
@@ -57,12 +58,13 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
 
 | Commande | Ce qu'elle fait | Depuis |
 | --- | --- | --- |
-| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8), si sa puce flash est connue (0.9) ; 0 emplacement de sample (0.9) | 0.1 |
+| 1 INFO | répond aussi `GABARE` et le nombre de moteurs, si une banque DX7 est là (0.3), la taille et le format du morceau (0.7), s'il accepte un morceau (0.8), si sa puce flash est connue (0.9), s'il connaît le MODE PC (0.10) ; 0 emplacement de sample (0.9) | 0.1 |
 | 2 à 6 (samples de KAWA) | répondent « mauvais arguments » : SAMPLE est retiré | 0.9 |
 | 16, 17, 18 DX BEGIN, WRITE, END | écrire une banque DX7 de 32 voix dans la flash (séquenceur arrêté ; contrôle CRC) | 0.3 |
 | 19 DX READ | relire la banque, 64 octets à la fois | 0.4 |
 | 20 PRJ READ | relire le morceau en mémoire, sauvé ou non, 64 octets à la fois (même pendant la lecture) | 0.7 |
 | 21, 22, 23 PRJ BEGIN, WRITE, END | recevoir un morceau (séquenceur arrêté) : le sien est d'abord gardé dans la sauvegarde automatique et revient si le nouveau n'arrive pas entier ; **SAVE** range le nouveau | 0.8 |
+| 24 PC MODE | allume (1) ou éteint (0) le MODE PC ; répond s'il est allumé | 0.10 |
 
 ### Sur l'ordinateur
 
@@ -73,7 +75,7 @@ décrites en tête de `source/firmware/src/kawa_sysex.c`.
   n'a plus de samples (0.9).
 - [aide.html](aide.html) : l'aide-mémoire des gestes de Gabare, à imprimer (0.6).
 - Fm1Studio joue les sons de Gabare sur le PC (avec le code de Gabare), envoie la banque DX7, importe le morceau du
-  FM-1 (0.7) et lui envoie le sien (0.8).
+  FM-1 (0.7) et lui envoie le sien (0.8) ; en MODE PC (0.10), il se joue depuis le FM-1 (« Continuer sur le PC »).
 
 ### Ce qui reste de KAWA
 
@@ -176,6 +178,21 @@ DOSAGE mêle l'effet au son. Un morceau qui s'en sert sonne sans cet effet sous 
   résonance d'un filtre), 73 / 75 / 72 l'attaque, le déclin et le relâché, 5 le glissé (CARRÉ, ONDE), 91 et 94 les
   envois de réverb et d'écho, 64 la pédale de sustain ; **Program Change** : le son d'usine n° N du moteur de la
   piste (Bank Select, CC 0, pour aller au-delà de 128) ; **pitch bend** : ± 2 demi-tons.
+
+### Le MODE PC (0.10)
+
+Pour continuer sur l'ordinateur, dans Fm1Studio, un morceau commencé sur le FM-1 : le FM-1 devient le clavier de
+Fm1Studio (plus de pistes, des sons de plusieurs firmwares), et c'est l'écran du PC qui montre où l'on en est.
+
+- **Entrer** : SAVE (PROJETS), **MODE PC**, OK. Ou depuis Fm1Studio, « Continuer sur le PC » (panneau Banques
+  FM-1) : il relit d'abord le morceau du FM-1, puis allume le MODE PC (commande SysEx 24).
+- **Pendant** : le séquenceur s'arrête et Gabare se tait ; l'écran dit « MODE PC ». Les touches, les boutons et les
+  encodeurs partent par USB au format que lit Fm1Studio : touches en notes (canal 1, 53 + n° de touche), boutons
+  en notes (canal 2, 0 OCT− … 13 REC), encodeurs en CC 16 à 22 relatifs (64 ± pas). Fm1Studio en fait sa façade :
+  la piste, les sons de ses firmwares (ALGORITHM le groupe, PRESETS le son), leurs réglages (HOME, K1 à K4).
+- **Sortir** : **HOME tenu 2 s** sur le FM-1 (l'aide ne s'ouvre pas en MODE PC), ou « Revenir à Gabare » dans
+  Fm1Studio. Gabare reprend là où il était, son morceau intact. Envoyer au FM-1 le morceau fait sur le PC reste
+  une action de Fm1Studio (commandes 21 à 23).
 
 ### Les accords : l'effet ACC
 
